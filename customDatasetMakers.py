@@ -14,7 +14,7 @@ def normalize(arr, sig_name):
     return normed_arr
 def denormalize(arr, sig_name):
     if 'qpsi' in sig_name:
-        denormed_arr = 1. / denormed_arr
+        denormed_arr = 1. / arr
     else:
         denormed_arr = (arr * normalizations[sig_name]['std']) + normalizations[sig_name]['mean']
     return denormed_arr
