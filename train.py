@@ -55,12 +55,9 @@ model.to(device)
 start_time=time.time()
 prev_time=start_time
 for epoch in range(n_epochs):
-    if epoch and (not (epoch % 5)):
-        print(f'{epoch:4d}/{n_epochs}({(time.time()-prev_time)/60:0.2f}min)... train: {train_losses[-1]:0.2e}, val: {val_losses[-1]:0.2e};')
-        prev_time=time.time()
     model.train()
     train_losses.append(0)
-    for output_profiles_train, input_profiles_train, input_actuators_train, input_parameters_train in train_loader:
+    for output_profiles_train, input_profiles_train, input_actuators_train, input_parameters_train, _, _ in train_loader:
         input_profiles_train=input_profiles_train.to(device)
         input_actuators_train=input_actuators_train.to(device)
         input_parameters_train=input_parameters_train.to(device)
@@ -76,7 +73,7 @@ for epoch in range(n_epochs):
     model.eval()
     with torch.no_grad():
         val_losses.append(0)
-        for output_profiles_val, input_profiles_val, input_actuators_val, input_parameters_val in val_loader:
+        for output_profiles_val, input_profiles_val, input_actuators_val, input_parameters_val, _, _ in val_loader:
             input_profiles_val=input_profiles_val.to(device)
             input_actuators_val=input_actuators_val.to(device)
             input_parameters_val=input_parameters_val.to(device)
@@ -85,8 +82,9 @@ for epoch in range(n_epochs):
             val_loss = loss_fn(output_profiles_hat, output_profiles_val)
             val_losses[-1]+=val_loss.item()*len(output_profiles_val) # mean * # samples in batch
         val_losses[-1]/=len(val_dataset)
+    print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {train_losses[-1]:0.2e}, val: {val_losses[-1]:0.2e};')
     if val_losses[-1]==min(val_losses):
-        print(f"checkpoint: train_loss: {train_losses[-1]:0.2e}, val_loss: {val_losses[-1]:0.2e}")
+        print(f"Checkpoint")
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -100,5 +98,6 @@ for epoch in range(n_epochs):
             'lookback': lookback,
             'exclude_ech': True
         }, output_filename)
+    prev_time=time.time()
 
-print(f'...took {(time.time()-start_time)/60:0.2f}min: train: {train_losses[-1]:0.2e}, val: {val_losses[-1]:0.2e}')
+print(f'...took {(time.time()-start_time)/60:0.2f}min')

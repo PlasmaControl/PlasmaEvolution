@@ -38,6 +38,7 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
     with h5py.File(data_filename,'r') as f:
         times=f['times'][:]
         input_profiles, input_actuators, input_parameters, output_profiles = [],[],[],[]
+        recorded_shots, recorded_times = [],[]
         if shots is None:
             shots = list(f.keys())
             shots.remove('times')
@@ -46,10 +47,8 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
             shots=[str(shot) for shot in shots]
         prev_time=time.time()
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
+        SHOTS_PER_PRINT = 200
         for nshot,shot in enumerate(shots):
-            if nshot and not nshot % 200:
-                print(f'{nshot:5d}/{len(shots)} shots ({(time.time()-prev_time)/60:0.2f}min)')
-                prev_time=time.time()
             if (shot in f) and np.all([key in f[shot].keys() for key in actuators+profiles+parameters]) \
                and not (exclude_ech and ('ech_pwr_total' in f[shot]) and np.sum(f[shot]['ech_pwr_total'][:])) \
                and not (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs):
@@ -78,10 +77,15 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
                         input_actuators.append(tmp_input_actuators)
                         input_parameters.append(tmp_input_parameters)
                         output_profiles.append(tmp_output_profiles)
+                        recorded_shots.append(int(shot))
+                        recorded_times.append(times[t_ind+lookback])
                         included_timestep_count+=1
                         shot_included=True
                 if shot_included:
                     included_shot_count+=1
+            if (nshot+1) % SHOTS_PER_PRINT:
+                print(f'{(nshot+1):5d}/{len(shots)} shots ({(time.time()-prev_time)/SHOTS_PER_PRINT:0.2f}s/shot)')
+                prev_time=time.time()
     print(f'...took {(time.time()-start_time)/60:0.2f}min,',
           f'{included_shot_count}/{len(shots)} shots included,',
           f'{included_timestep_count}/{total_timestep_count} timesteps included')
@@ -89,7 +93,9 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
     output_profiles_tensor=torch.as_tensor(np.array(output_profiles)).float()
     input_actuators_tensor=torch.as_tensor(np.array(input_actuators)).float()
     input_parameters_tensor=torch.as_tensor(np.array(input_parameters)).float()
-    
+    recorded_shots_tensor=torch.as_tensor(np.array(recorded_shots)).int()
+    recorded_times_tensor=torch.as_tensor(np.array(recorded_times)).int()
+
     for i,profile in enumerate(profiles):
         input_profiles_tensor[:,i] = normalize(input_profiles_tensor[:,i], profile)
         output_profiles_tensor[:,i] = normalize(output_profiles_tensor[:,i], profile)
@@ -99,4 +105,5 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
         input_parameters_tensor[:,i] = normalize(input_parameters_tensor[:,i], parameter)
 
     return TensorDataset(output_profiles_tensor, input_profiles_tensor,
-                         input_actuators_tensor.transpose(-2,-1), input_parameters_tensor.transpose(-2,-1))
+                         input_actuators_tensor.transpose(-2,-1), input_parameters_tensor.transpose(-2,-1),
+                         recorded_shots_tensor, recorded_times_tensor)
