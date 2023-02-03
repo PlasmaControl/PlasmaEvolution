@@ -15,10 +15,18 @@ saved_state=torch.load(input_filename)
 model=customModels.PlasmaConv2D(saved_state['profiles'], saved_state['actuators'], saved_state['parameters'])
 model.load_state_dict(saved_state['model_state_dict'])
 
+extra_sigs=saved_state['extra_sigs']
+if 'shots' not in extra_sigs:
+    extra_sigs.append('shots')
+if 'times' not in extra_sigs:
+    extra_sigs.append('times')
 dataset=customDatasetMakers.standard_dataset(data_filename,saved_state['profiles'],saved_state['actuators'],saved_state['parameters'],
-                                             saved_state['lookahead'],saved_state['lookback'], shots=val_shots[-100::5])
+                                             saved_state['lookahead'],saved_state['lookback'],shots=val_shots[-100::5],
+                                             latest_output_only=saved_state['latest_output_only'],extra_sigs=extra_sigs)
 data_loader=DataLoader(dataset, batch_size=50)
-output_profiles, input_profiles, input_actuators, input_parameters, recorded_shots, recorded_times = next(iter(data_loader))
+output_profiles, input_profiles, input_actuators, input_parameters, extra_sigs_tensor = next(iter(data_loader))
+recorded_shots=extra_sigs_tensor[:,extra_sigs.index('shots')]
+recorded_times=extra_sigs_tensor[:,extra_sigs.index('times')]
 yhat_numpy=model(input_profiles, input_actuators, input_parameters).detach().numpy()
 input_profiles_numpy=input_profiles.detach().numpy()
 output_profiles_numpy=output_profiles.detach().numpy()
@@ -33,11 +41,11 @@ for i,actuator in enumerate(saved_state['actuators']):
 highest_batch_ind=49
 x=np.linspace(0,1,nx)
 nrows=max(len(saved_state['profiles']),len(saved_state['actuators']))
-for plot_count in range(10):
+for plot_count in range(3):
     batch_ind=highest_batch_ind-plot_count*4
     time=recorded_times[batch_ind].detach().numpy()
     DT=25
-    times=np.arange(time-DT*saved_state['lookback'],time+DT*saved_state['lookahead'],DT)
+    times=np.arange(time-DT*saved_state['lookback'],time+DT*(1+saved_state['lookahead']),DT)
     shot=recorded_shots[batch_ind].detach().numpy()
     fig,axes=plt.subplots(nrows=nrows,ncols=2,sharex='col')
     axes=axes.T

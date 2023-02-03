@@ -6,7 +6,7 @@ from torch.utils.data import TensorDataset
 from dataSettings import normalizations
 
 def normalize(arr, sig_name):
-    # q blows up at the edge, use iota = 1/q as proxy for q
+    # q blows up at the edge, use iota = 1/q as proxy for q and don't use ad hoc normalization
     if 'qpsi' in sig_name:
         normed_arr = 1. / arr
     else:
@@ -20,7 +20,8 @@ def denormalize(arr, sig_name):
     return denormed_arr
 
 def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback,
-                     shots=None, exclude_ech=True, excluded_runs=[]):
+                     latest_output_only=False, exclude_ech=True,
+                     shots=None, excluded_runs=[], extra_sigs=['shots', 'times']):
     def profiles_ok(profiles):
         if np.isnan(profiles).any():
             return False
@@ -60,13 +61,16 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
                         tmp_input_profiles.append(f[shot][profile][t_ind])
                     tmp_output_profiles=[]
                     for profile in profiles:
-                        tmp_output_profiles.append(f[shot][profile][t_ind+lookahead])
+                        if latest_output_only:
+                            tmp_output_profiles.append(f[shot][profile][t_ind+lookahead])
+                        else:
+                            tmp_output_profiles.append(f[shot][profile][t_ind+1:t_ind+lookahead+1])
                     tmp_input_actuators=[]
                     for actuator in actuators:
-                        tmp_input_actuators.append(f[shot][actuator][t_ind-lookback:t_ind+lookahead])
+                        tmp_input_actuators.append(f[shot][actuator][t_ind-lookback:t_ind+lookahead+1])
                     tmp_input_parameters=[]
                     for parameter in parameters:
-                        tmp_input_parameters.append(f[shot][parameter][t_ind-lookback:t_ind])
+                        tmp_input_parameters.append(f[shot][parameter][t_ind-lookback:t_ind+1])
                     tmp_input_profiles=np.array(tmp_input_profiles)
                     tmp_output_profiles=np.array(tmp_output_profiles)
                     tmp_input_actuators=np.array(tmp_input_actuators)
@@ -78,7 +82,7 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
                         input_parameters.append(tmp_input_parameters)
                         output_profiles.append(tmp_output_profiles)
                         recorded_shots.append(int(shot))
-                        recorded_times.append(times[t_ind+lookback])
+                        recorded_times.append(times[t_ind])
                         included_timestep_count+=1
                         shot_included=True
                 if shot_included:
@@ -104,6 +108,18 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
     for i,parameter in enumerate(parameters):
         input_parameters_tensor[:,i] = normalize(input_parameters_tensor[:,i], parameter)
 
+    # reshape to be in format that pytorch likes for RNN stuff
+    if not latest_output_only:
+        output_profiles_tensor = output_profiles_tensor.transpose(-3,-2)
+    input_actuators_tensor = input_actuators_tensor.transpose(-2,-1)
+    input_parameters_tensor = input_parameters_tensor.transpose(-2,-1)
+
+    extra_sig_map={
+        'shots': recorded_shots_tensor,
+        'times': recorded_times_tensor
+        }
+    extra_sigs_tensor=torch.stack([extra_sig_map[key] for key in extra_sigs]).T
+
     return TensorDataset(output_profiles_tensor, input_profiles_tensor,
-                         input_actuators_tensor.transpose(-2,-1), input_parameters_tensor.transpose(-2,-1),
-                         recorded_shots_tensor, recorded_times_tensor)
+                         input_actuators_tensor, input_parameters_tensor,
+                         extra_sigs_tensor)

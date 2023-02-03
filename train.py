@@ -7,36 +7,49 @@ import time
 import customModels
 import customDatasetMakers
 from dataSettings import nx, train_shots, val_shots
+val_shots=None
 
-data_filename='example_174042_165400.h5'
+data_filename='test.h5' #'example_174042_165400.h5'
 
-output_filename='PlasmaConv2D.tar'
 profiles=['zipfit_etempfit_psi','zipfit_trotfit_psi','zipfit_edensfit_psi','pres_EFIT01','qpsi_EFIT01']
 actuators=['pinj', 'tinj', 'ipsiptargt','dstdenp']
 parameters=['li_EFIT01','tribot_EFIT01','tritop_EFIT01','dssdenest','kappa_EFIT01','volume_EFIT01']
+# choose from "time", "shot", "taue"
+extra_sigs=['shots', 'times']
+
+#model = customModels.ProfilesFromActuators(profiles, actuators)
+if False:
+    output_filename='PlasmaConv2D.tar'
+    latest_output_only=True
+    model = customModels.PlasmaConv2D(profiles, actuators, parameters)
+    loss_fn = torch.nn.MSELoss(reduction='mean')
+else:
+    output_filename='PlasmaGRU.tar'
+    latest_output_only=False
+    model = customModels.PlasmaGRU(profiles, actuators, parameters)
+    loss_fn = torch.nn.MSELoss(reduction='mean')
 
 lookahead=6
-lookback=5
+lookback=8
 
 n_epochs=20
 batch_size=10
 lr=1e-2
 
 if (train_shots is None) or (val_shots is None):
-    dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback)
+    dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback,
+                                                 latest_output_only=latest_output_only, extra_sigs=extra_sigs)
     ntrain=int(0.7*len(dataset))
     nval=int(0.2*len(dataset))
     ntest=len(dataset)-ntrain-nval
     train_dataset, val_dataset, _ = random_split(dataset,[ntrain,nval,ntest])
 else:
-    train_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback,train_shots)
-    val_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback,val_shots)
+    train_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback,train_shots,
+                                                       latest_output_only=latest_output_only, extra_sigs=extra_sigs)
+    val_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback,val_shots,
+                                                     latest_output_only=latest_output_only, extra_sigs=extra_sigs)
 train_loader=DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader=DataLoader(val_dataset, batch_size=batch_size)
-
-#model = customModels.ProfilesFromActuators(profiles, actuators)
-model = customModels.PlasmaConv2D(profiles, actuators, parameters)
-loss_fn = torch.nn.MSELoss(reduction='mean')
 
 train_losses=[]
 val_losses=[]
@@ -57,7 +70,7 @@ prev_time=start_time
 for epoch in range(n_epochs):
     model.train()
     train_losses.append(0)
-    for output_profiles_train, input_profiles_train, input_actuators_train, input_parameters_train, _, _ in train_loader:
+    for output_profiles_train, input_profiles_train, input_actuators_train, input_parameters_train, _ in train_loader:
         input_profiles_train=input_profiles_train.to(device)
         input_actuators_train=input_actuators_train.to(device)
         input_parameters_train=input_parameters_train.to(device)
@@ -73,7 +86,7 @@ for epoch in range(n_epochs):
     model.eval()
     with torch.no_grad():
         val_losses.append(0)
-        for output_profiles_val, input_profiles_val, input_actuators_val, input_parameters_val, _, _ in val_loader:
+        for output_profiles_val, input_profiles_val, input_actuators_val, input_parameters_val, _ in val_loader:
             input_profiles_val=input_profiles_val.to(device)
             input_actuators_val=input_actuators_val.to(device)
             input_parameters_val=input_parameters_val.to(device)
@@ -93,9 +106,11 @@ for epoch in range(n_epochs):
             'val_losses': val_losses,
             'profiles': profiles,
             'actuators': actuators,
+            'extra_sigs': extra_sigs,
             'parameters': parameters,
             'lookahead': lookahead,
             'lookback': lookback,
+            'latest_output_only': latest_output_only,
             'exclude_ech': True
         }, output_filename)
     prev_time=time.time()

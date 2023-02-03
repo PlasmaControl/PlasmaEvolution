@@ -11,7 +11,6 @@ class ProfilesFromActuators(torch.nn.Module):
         self.nactuators = len(actuators)
         self.c = torch.nn.Parameter(torch.randn((1,self.nprofiles*nx,self.nactuators),
                                                 requires_grad=True, dtype=torch.float))
-        
     def forward(self, input_profiles, input_actuators, input_parameters):
         # Computes the outputs / predictions
         # batch_size, nx*len(profiles), lookahead
@@ -23,6 +22,7 @@ class ProfilesFromActuators(torch.nn.Module):
         return pseudo_profiles
 
 # reproducing 2021 paper
+# dataset should be built w/ just last timestep as output
 class PlasmaConv2D(torch.nn.Module):
     def __init__(self, profiles, actuators, parameters):
         super().__init__()
@@ -68,7 +68,6 @@ class PlasmaConv2D(torch.nn.Module):
             torch.nn.Conv1d(10,len(profiles),2,padding='same'),
             torch.nn.ReLU(),
         )
-        
     def forward(self, input_profiles, input_actuators, input_parameters):
         preAddProfiles=self.conv(input_profiles)
         preAddActuators=self.actuatorPreRNN(input_actuators)
@@ -81,4 +80,18 @@ class PlasmaConv2D(torch.nn.Module):
         preAddParameters=self.parameterPostRNN(preAddParameters)
         pseudoProfiles=preAddProfiles+preAddActuators+preAddParameters
         outputProfiles=self.deconv(pseudoProfiles)
+        return outputProfiles
+
+# simplest RNN possible
+# dataset should be built with all timesteps output
+class PlasmaGRU(torch.nn.Module):
+    def __init__(self, profiles, actuators, parameters):
+        super().__init__()
+        self.nprofiles=len(profiles)
+        self.recurrent = torch.nn.GRU(len(actuators),len(profiles)*nx,batch_first=True)
+    def forward(self, input_profiles, input_actuators, input_parameters):
+        present_time_ind=input_parameters.shape[1]-1 #=lookback
+        hiddenProfiles,_=self.recurrent(input_actuators[:,present_time_ind+1:,:],
+                                        torch.flatten(input_profiles,start_dim=1)[None,:])
+        outputProfiles=hiddenProfiles.reshape(*hiddenProfiles.shape[:-1],self.nprofiles,nx)
         return outputProfiles
