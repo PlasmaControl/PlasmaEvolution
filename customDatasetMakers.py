@@ -3,25 +3,12 @@ import time
 import h5py
 import numpy as np
 from torch.utils.data import TensorDataset
-from dataSettings import normalizations
 
-def normalize(arr, sig_name):
-    # q blows up at the edge, use iota = 1/q as proxy for q and don't use ad hoc normalization
-    if 'qpsi' in sig_name:
-        normed_arr = 1. / arr
-    else:
-        normed_arr = (arr - normalizations[sig_name]['mean']) / normalizations[sig_name]['std']
-    return normed_arr
-def denormalize(arr, sig_name):
-    if 'qpsi' in sig_name:
-        denormed_arr = 1. / arr
-    else:
-        denormed_arr = (arr * normalizations[sig_name]['std']) + normalizations[sig_name]['mean']
-    return denormed_arr
+import dataSettings
 
 def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback,
-                     latest_output_only=False, exclude_ech=True,
-                     shots=None, excluded_runs=[], extra_sigs=['shots', 'times']):
+                     shots=None, excluded_runs=[],
+                     exclude_ech=True, profile_lookback=1, extra_sigs=['shots', 'times']):
     def profiles_ok(profiles):
         if np.isnan(profiles).any():
             return False
@@ -38,7 +25,7 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
     start_time=time.time()
     with h5py.File(data_filename,'r') as f:
         times=f['times'][:]
-        input_profiles, input_actuators, input_parameters, output_profiles = [],[],[],[]
+        profiles_arr, actuators_arr, parameters_arr = [],[],[]
         recorded_shots, recorded_times = [],[]
         if shots is None:
             shots = list(f.keys())
@@ -56,31 +43,23 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
                 shot_included=False
                 for t_ind in range(lookback,len(times)-lookahead):
                     total_timestep_count+=1
-                    tmp_input_profiles=[]
+                    tmp_profiles_arr=[]
                     for profile in profiles:
-                        tmp_input_profiles.append(f[shot][profile][t_ind])
-                    tmp_output_profiles=[]
-                    for profile in profiles:
-                        if latest_output_only:
-                            tmp_output_profiles.append(f[shot][profile][t_ind+lookahead])
-                        else:
-                            tmp_output_profiles.append(f[shot][profile][t_ind+1:t_ind+lookahead+1])
-                    tmp_input_actuators=[]
+                        tmp_profiles_arr.append(f[shot][profile][t_ind-profile_lookback:t_ind+lookahead+1])
+                    tmp_actuators_arr=[]
                     for actuator in actuators:
-                        tmp_input_actuators.append(f[shot][actuator][t_ind-lookback:t_ind+lookahead+1])
-                    tmp_input_parameters=[]
+                        tmp_actuators_arr.append(f[shot][actuator][t_ind-lookback:t_ind+lookahead+1])
+                    tmp_parameters_arr=[]
                     for parameter in parameters:
-                        tmp_input_parameters.append(f[shot][parameter][t_ind-lookback:t_ind+1])
-                    tmp_input_profiles=np.array(tmp_input_profiles)
-                    tmp_output_profiles=np.array(tmp_output_profiles)
-                    tmp_input_actuators=np.array(tmp_input_actuators)
-                    tmp_input_parameters=np.array(tmp_input_parameters)
-                    if profiles_ok(tmp_input_profiles) and profiles_ok(tmp_output_profiles) \
-                       and scalars_ok(tmp_input_actuators) and scalars_ok(tmp_input_parameters):
-                        input_profiles.append(tmp_input_profiles)
-                        input_actuators.append(tmp_input_actuators)
-                        input_parameters.append(tmp_input_parameters)
-                        output_profiles.append(tmp_output_profiles)
+                        tmp_parameters_arr.append(f[shot][parameter][t_ind-lookback:t_ind+1])
+                    tmp_profiles_arr=np.array(tmp_profiles_arr)
+                    tmp_actuators_arr=np.array(tmp_actuators_arr)
+                    tmp_parameters_arr=np.array(tmp_parameters_arr)
+                    if profiles_ok(tmp_profiles_arr) \
+                       and scalars_ok(tmp_actuators_arr) and scalars_ok(tmp_parameters_arr):
+                        profiles_arr.append(tmp_profiles_arr)
+                        actuators_arr.append(tmp_actuators_arr)
+                        parameters_arr.append(tmp_parameters_arr)
                         recorded_shots.append(int(shot))
                         recorded_times.append(times[t_ind])
                         included_timestep_count+=1
@@ -93,33 +72,31 @@ def standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookb
     print(f'...took {(time.time()-start_time)/60:0.2f}min,',
           f'{included_shot_count}/{len(shots)} shots included,',
           f'{included_timestep_count}/{total_timestep_count} timesteps included')
-    input_profiles_tensor=torch.as_tensor(np.array(input_profiles)).float()
-    output_profiles_tensor=torch.as_tensor(np.array(output_profiles)).float()
-    input_actuators_tensor=torch.as_tensor(np.array(input_actuators)).float()
-    input_parameters_tensor=torch.as_tensor(np.array(input_parameters)).float()
+    profiles_tensor=torch.as_tensor(np.array(profiles_arr)).float()
+    actuators_tensor=torch.as_tensor(np.array(actuators_arr)).float()
+    parameters_tensor=torch.as_tensor(np.array(parameters_arr)).float()
     recorded_shots_tensor=torch.as_tensor(np.array(recorded_shots)).int()
     recorded_times_tensor=torch.as_tensor(np.array(recorded_times)).int()
 
     for i,profile in enumerate(profiles):
-        input_profiles_tensor[:,i] = normalize(input_profiles_tensor[:,i], profile)
-        output_profiles_tensor[:,i] = normalize(output_profiles_tensor[:,i], profile)
+        profiles_tensor[:,i] = dataSettings.normalize(profiles_tensor[:,i], profile)
     for i,actuator in enumerate(actuators):
-        input_actuators_tensor[:,i] = normalize(input_actuators_tensor[:,i], actuator)
+        actuators_tensor[:,i] = dataSettings.normalize(actuators_tensor[:,i], actuator)
     for i,parameter in enumerate(parameters):
-        input_parameters_tensor[:,i] = normalize(input_parameters_tensor[:,i], parameter)
-
-    # reshape to be in format that pytorch likes for RNN stuff
-    if not latest_output_only:
-        output_profiles_tensor = output_profiles_tensor.transpose(-3,-2)
-    input_actuators_tensor = input_actuators_tensor.transpose(-2,-1)
-    input_parameters_tensor = input_parameters_tensor.transpose(-2,-1)
+        parameters_tensor[:,i] = dataSettings.normalize(parameters_tensor[:,i], parameter)
+    # reshape toward format that pytorch likes for RNN stuff when batch_first=True:
+    # scalars: N x L x Nscalars for N batch, L sequence length (lookback+1; lookback+1 + lookahead)
+    # profiles: N x L x Nprofiles x NrhoPoints for N batch, L sequence length (lookback+1; lookahead)
+    #           where for profiles we need to flatten/unflatten the Nprofiles x NrhoPoints in the model
+    profiles_tensor = profiles_tensor.transpose(-3,-2)
+    actuators_tensor = actuators_tensor.transpose(-2,-1)
+    parameters_tensor = parameters_tensor.transpose(-2,-1)
 
     extra_sig_map={
         'shots': recorded_shots_tensor,
         'times': recorded_times_tensor
-        }
+    }
     extra_sigs_tensor=torch.stack([extra_sig_map[key] for key in extra_sigs]).T
 
-    return TensorDataset(output_profiles_tensor, input_profiles_tensor,
-                         input_actuators_tensor, input_parameters_tensor,
+    return TensorDataset(profiles_tensor, actuators_tensor, parameters_tensor,
                          extra_sigs_tensor)

@@ -22,7 +22,7 @@ if 'times' not in extra_sigs:
     extra_sigs.append('times')
 dataset=customDatasetMakers.standard_dataset(data_filename,saved_state['profiles'],saved_state['actuators'],saved_state['parameters'],
                                              saved_state['lookahead'],saved_state['lookback'],shots=val_shots[-100::5],
-                                             latest_output_only=saved_state['latest_output_only'],extra_sigs=extra_sigs)
+                                             extra_sigs=extra_sigs)
 data_loader=DataLoader(dataset, batch_size=50)
 output_profiles, input_profiles, input_actuators, input_parameters, extra_sigs_tensor = next(iter(data_loader))
 recorded_shots=extra_sigs_tensor[:,extra_sigs.index('shots')]

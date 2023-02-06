@@ -89,9 +89,10 @@ class PlasmaGRU(torch.nn.Module):
         super().__init__()
         self.nprofiles=len(profiles)
         self.recurrent = torch.nn.GRU(len(actuators),len(profiles)*nx,batch_first=True)
-    def forward(self, input_profiles, input_actuators, input_parameters):
-        present_time_ind=input_parameters.shape[1]-1 #=lookback
-        hiddenProfiles,_=self.recurrent(input_actuators[:,present_time_ind+1:,:],
-                                        torch.flatten(input_profiles,start_dim=1)[None,:])
+    def forward(self, profiles_tensor, actuators_tensor, parameters_tensor):
+        lookahead=actuators_tensor.shape[1]-parameters_tensor.shape[1] #present timestep -lookahead-1
+        present_profile=profiles_tensor[:,-lookahead-1,:,:]
+        hiddenProfiles,_=self.recurrent(actuators_tensor[:,-lookahead:,:],
+                                        torch.flatten(present_profile,start_dim=1)[None,:])
         outputProfiles=hiddenProfiles.reshape(*hiddenProfiles.shape[:-1],self.nprofiles,nx)
         return outputProfiles
