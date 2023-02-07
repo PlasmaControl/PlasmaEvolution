@@ -2,13 +2,14 @@ import torch
 import dataSettings
 
 def calculate_taue(W, dWdt, P):
-    # remember, denormalized pinj is in kilowatts in our present dataset: convert to W
-    return torch.clamp(W / ((P+dataSettings.ohmicPower) - dWdt),
+    # W in J, P in W, dWdt in W
+    return torch.clamp(W / (P - dWdt),
                        min=dataSettings.taueMin,
                        max=dataSettings.taueMax)
 
 # get stored energy in J from profile info and volume
 def calculate_W(etemp, itemp, edens, volume):
+    # etemp, itemp, edens, and volume normalized values coming in
     etemp=dataSettings.denormalize(etemp, 'zipfit_etempfit_rho')
     itemp=dataSettings.denormalize(itemp, 'zipfit_itempfit_rho')
     edens=dataSettings.denormalize(edens, 'zipfit_edensfit_rho')
@@ -61,7 +62,8 @@ class combinedLoss(torch.nn.Module):
                            profiles_tensor[:,-lookahead-2,edens_ind,:],
                            parameters_tensor[:,-2,volume_ind])
         dWdt=(W_now-W_prev)/dataSettings.DT
-        P_rollout=1.e3*dataSettings.denormalize(actuators_tensor[:,-lookahead-1:,pinj_ind],'pinj')
+        # add small epsilon of ohmic power, mostly so no-beam cases still converge ok
+        P_rollout=1.e3*dataSettings.denormalize(actuators_tensor[:,-lookahead-1:,pinj_ind],'pinj') + dataSettings.ohmicPower
         #(actuators_tensor[:,-lookahead:,pinj_ind]+actuators_tensor[:,-lookahead-1:-1,pinj_ind])/2.
         W=W_now #(W_now+W_prev)/2
         taue_now=calculate_taue(W, dWdt, P_rollout[:,0])

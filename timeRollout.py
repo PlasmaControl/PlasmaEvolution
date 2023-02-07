@@ -92,7 +92,7 @@ for time_ind in range(yhat_tensor.shape[1]):
                                                 yhat_tensor[batch_ind:batch_ind+1,time_ind,itemp_ind,:],
                                                 yhat_tensor[batch_ind:batch_ind+1,time_ind,edens_ind,:],
                                                 parameters_tensor[batch_ind:batch_ind+1,-1,volume_ind])[0])
-P_rollout=1e3*actuators_tensor[batch_ind,-saved_state['lookahead']-1:,pinj_ind]
+P_rollout=1e3*actuators_tensor[batch_ind,-saved_state['lookahead']-1:,pinj_ind] + dataSettings.ohmicPower
 P_now=P_rollout[0]
 W_now=W_real[-saved_state['lookahead']-1]
 dWdt=(W_real[-saved_state['lookahead']]-W_real[-saved_state['lookahead']-1])/dataSettings.DT
@@ -100,11 +100,6 @@ taue_now=customLosses.calculate_taue(W_now,dWdt,P_now)
 W_expected=[W_now]
 for time_ind in range(saved_state['lookahead']):
     W_expected.append(W_expected[-1]+(-W_expected[-1]/taue_now + P_rollout[time_ind])*dataSettings.DT)
-def forceToList(arr):
-    return [float(elem) for elem in arr]
-#W_real=forceToList(W_real)
-#W_predicted=forceToList(W_predicted)
-#W_expected=forceToList(W_expected)
 axes[1,-1].plot(times[-saved_state['lookahead']-2:],np.array(W_real)/1.e6,label='real')
 axes[1,-1].plot(times[-saved_state['lookahead']:],np.array(W_predicted)/1.e6,label='predicted')
 axes[1,-1].plot(times[-saved_state['lookahead']-1:],np.array(W_expected)/1.e6,label='expected')
