@@ -8,32 +8,39 @@ import customModels
 import customLosses
 import customDatasetMakers
 from dataSettings import nx, train_shots, val_shots
-val_shots=None
 
-data_filename='test.h5' #'example_174042_165400.h5'
+import configparser
+import os
+import sys
 
-profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho','zipfit_edensfit_rho','qpsi_EFIT01']
-actuators=['pinj', 'tinj', 'ipsiptargt','dstdenp']
-parameters=['li_EFIT01','tribot_EFIT01','tritop_EFIT01','dssdenest','kappa_EFIT01','volume_EFIT01']
-# choose from "time", "shot", "taue"
-extra_sigs=['shots', 'times'] #must not be empty
+if (len(sys.argv)-1) > 0:
+    config_filename=sys.argv[1]
+else:
+    config_filename='configs/default.cfg'
 
-#model = customModels.ProfilesFromActuators(profiles, actuators)
-if False:
-    output_filename='PlasmaConv2D.tar'
+config=configparser.ConfigParser()
+config.read(config_filename)
+data_filename=config['data']['data_filename']
+model_type=config['model']['model_type']
+n_epochs=int(config['optimization']['n_epochs'])
+batch_size=int(config['optimization']['batch_size'])
+lr=float(config['optimization']['lr'])
+energyWeight=float(config['optimization']['energyWeight'])
+lookahead=int(config['inputs']['lookahead'])
+lookback=int(config['inputs']['lookback'])
+profiles=config['inputs']['profiles'].split()
+actuators=config['inputs']['actuators'].split()
+parameters=config['inputs']['parameters'].split()
+
+# dump to same location as the config filename, with .tar instead of .cfg
+output_filename=os.path.basename(config_filename).split('.cfg')[0]+".tar"
+
+if model_type=='PlasmaGRU':
+    model = customModels.PlasmaGRU(profiles, actuators, parameters)
+    loss_fn = customLosses.combinedLoss(energyWeight)
+else:
     model = customModels.PlasmaConv2D(profiles, actuators, parameters)
     loss_fn = customLosses.myMSELoss()
-else:
-    output_filename='PlasmaGRU.tar'
-    model = customModels.PlasmaGRU(profiles, actuators, parameters)
-    loss_fn = customLosses.combinedLoss()
-
-lookahead=6
-lookback=8
-
-n_epochs=20
-batch_size=10
-lr=1e-2
 
 if (train_shots is None) or (val_shots is None):
     dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,lookahead,lookback)
@@ -104,7 +111,6 @@ for epoch in range(n_epochs):
             'val_losses': val_losses,
             'profiles': profiles,
             'actuators': actuators,
-            'extra_sigs': extra_sigs,
             'parameters': parameters,
             'lookahead': lookahead,
             'lookback': lookback,

@@ -14,6 +14,7 @@ normalizations={
     'pinj': {'mean': 0, 'std': 1e3},
     'tinj': {'mean': 0, 'std': 1},
     'ipsiptargt': {'mean': 0, 'std': 1},
+    'ip': {'mean': 0, 'std': 1e6},
     'bt': {'mean': 0, 'std': 1},
     'dstdenp': {'mean': 0, 'std': 1},
     'li_EFIT01': {'mean': 0, 'std': 1},
