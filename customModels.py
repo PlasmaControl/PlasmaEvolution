@@ -4,7 +4,7 @@ import torch
 
 # simple mapping, given just actuators over time try to predict profiles
 # I imagine lookback=0 is most sensible
-class ProfilesFromActuators(torch.nn.Module):
+class ProfilesFromActuatorsAdvanced(torch.nn.Module):
     def __init__(self, profiles, actuators):
         super().__init__()
         self.nprofiles = len(profiles)
@@ -96,3 +96,16 @@ class PlasmaGRU(torch.nn.Module):
                                         torch.flatten(present_profile,start_dim=1)[None,:])
         outputProfiles=hiddenProfiles.reshape(*hiddenProfiles.shape[:-1],self.nprofiles,nx)
         return outputProfiles
+
+class ProfilesFromActuators(torch.nn.Module):
+    def __init__(self, profiles, actuators, nProfilePoints, hidden_size=30):
+        super().__init__()
+        self.mlp= torch.nn.Sequential(
+            torch.nn.Linear(len(actuators), hidden_size),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_size, hidden_size),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_size, len(profiles)*nProfilePoints)
+        )
+    def forward(self, profiles_tensor, actuators_tensor):
+        return self.mlp(actuators_tensor)

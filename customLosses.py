@@ -37,6 +37,13 @@ class myMSELoss(torch.nn.Module):
         return torch.nn.MSELoss(reduction='mean')(profiles_predicted_tensor,
                                                   profiles_tensor[:,-lookahead:,:,:])
 
+class simpleMSELoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self, profiles_predicted_tensor, profiles_tensor, *args):
+        return torch.nn.MSELoss(reduction='mean')(profiles_predicted_tensor,
+                                                  profiles_tensor)
+
 class combinedLoss(torch.nn.Module):
     def __init__(self, energyWeight=0):
         super().__init__()
