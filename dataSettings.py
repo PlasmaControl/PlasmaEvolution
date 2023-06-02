@@ -8,6 +8,7 @@ DT=0.025
 normalizations={
     'zipfit_etempfit_rho': {'mean': 0, 'std': 1},
     'zipfit_edensfit_rho': {'mean': 0, 'std': 1},
+    'neped_joe': {'mean': 0, 'std': 1},
     'zipfit_trotfit_rho': {'mean': 0, 'std': 1e2},
     'zipfit_itempfit_rho': {'mean': 0, 'std': 1},
     'pres_EFIT01': {'mean': 0, 'std': 1e4},
@@ -20,13 +21,24 @@ normalizations={
     'li_EFIT01': {'mean': 0, 'std': 1},
     'tribot_EFIT01': {'mean': 0, 'std': 1},
     'tritop_EFIT01': {'mean': 0, 'std': 1},
+    'aminor_EFIT01': {'mean': 0, 'std': 1},
+    'rmaxis_EFIT01': {'mean': 0, 'std': 1},
     'dssdenest': {'mean': 0, 'std': 1},
     'kappa_EFIT01': {'mean': 0, 'std': 1},
-    'volume_EFIT01': {'mean': 0, 'std': 10}
+    'volume_EFIT01': {'mean': 0, 'std': 10},
+    'betan_EFIT01': {'mean': 0, 'std': 1},
+    'epedHeight': {'mean': 0, 'std': 5e-3},
+    'epedHeightForNe1': {'mean': 0, 'std': 5e-3},
+    'epedHeightForNe3': {'mean': 0, 'std': 5e-3},
+    'epedHeightForNe5': {'mean': 0, 'std': 5e-3},
+    'epedHeightForNe7': {'mean': 0, 'std': 5e-3}
     }
+# if average normalized data for shot greater than this many deviations away,
+# exclude the shot from the dataset
+deviation_cutoff=10
 
-min_shot=170010
-max_shot=170100
+min_shot=140888
+max_shot=190000
 val_indices=[5]
 test_indices=[0]
 

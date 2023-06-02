@@ -36,7 +36,7 @@ space_inds=[int(key) for key in config['inputs']['space_inds'].split()]
 # dump to same location as the config filename, with .tar instead of .cfg
 output_filename=os.path.basename(config_filename).split('.cfg')[0]+".tar"
 
-datasetParams={'lookahead': lookahead, 'lookback': lookback, 'space_inds': space_inds}
+datasetParams={'lookahead': lookahead, 'lookback': lookback, 'space_inds': space_inds, 'ip_maximum': 1.2e6}
 if model_type=='PlasmaGRU':
     model = customModels.PlasmaGRU(profiles, actuators, parameters)
     loss_fn = customLosses.combinedLoss(energyWeight)
@@ -45,7 +45,7 @@ elif model_type=='PlasmaConv2D':
     loss_fn = customLosses.myMSELoss()
 else:
     datasetParams.update({'rnn': False})
-    HIDDEN_SIZE=30
+    HIDDEN_SIZE=40
     model = customModels.ProfilesFromActuators(profiles, actuators, len(space_inds))
     loss_fn = customLosses.simpleMSELoss()
 
@@ -119,6 +119,7 @@ for epoch in range(n_epochs):
             'parameters': parameters,
             'lookahead': lookahead,
             'lookback': lookback,
+            'space_inds': space_inds,
             'exclude_ech': True
         }, output_filename)
     prev_time=time.time()

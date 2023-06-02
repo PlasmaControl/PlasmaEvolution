@@ -17,9 +17,11 @@ def scalars_ok(scalars):
     if np.isnan(scalars).any():
         return False
     return True
+def allTimesInBounds(arr, cutoff):
+    return np.all(np.abs(arr[~np.isnan(arr)])<cutoff)
 
 def standard_dataset(data_filename,profiles,actuators,parameters,
-                     shots=None,excluded_runs=[],exclude_ech=True,extra_sigs=['shots', 'times'],
+                     shots=None,excluded_runs=[],exclude_ech=True,extra_sigs=['shots', 'times'],ip_minimum=None,ip_maximum=None,
                      rnn=True,
                      space_inds=[6,26], #direct-from-actuator
                      profile_lookback=1, lookback=6, lookahead=1): #rnn
@@ -37,11 +39,12 @@ def standard_dataset(data_filename,profiles,actuators,parameters,
             shots=[str(shot) for shot in shots]
         prev_time=time.time()
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
-        SHOTS_PER_PRINT = 200
+        SHOTS_PER_PRINT = 1000
         for nshot,shot in enumerate(shots):
             if (shot in f) and np.all([key in f[shot].keys() for key in actuators+profiles+parameters]) \
+               and np.all([allTimesInBounds(dataSettings.normalize(f[shot][key][:],key),dataSettings.deviation_cutoff) for key in actuators+profiles+parameters]) \
                and not (exclude_ech and ('ech_pwr_total' in f[shot]) and np.sum(f[shot]['ech_pwr_total'][:])) \
-               and not (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs):
+               and not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs)):
                 if rnn:
                     shot_included=False
                     for t_ind in range(lookback,len(times)-lookahead):
@@ -73,7 +76,16 @@ def standard_dataset(data_filename,profiles,actuators,parameters,
                     profiles_exist=[~np.all(np.isnan(f[shot][profile]),axis=-1) for profile in profiles]
                     actuators_exist=[~np.isnan(f[shot][actuator]) for actuator in actuators]
                     total_timestep_count+=len(f['times'][()])
-                    included_time_inds=np.argwhere(np.array(profiles_exist+actuators_exist).all(axis=0)).squeeze()
+                    included_time_condition=np.array(profiles_exist+actuators_exist).all(axis=0)
+                    if (ip_minimum is not None) or (ip_maximum is not None):
+                        if 'ip' not in f[shot].keys():
+                            included_time_condition[:]=False
+                        else:
+                            if ip_minimum is not None:
+                                included_time_condition=np.logical_and(included_time_condition,f[shot]['ip'][:]>ip_minimum)
+                            if ip_maximum is not None:
+                                included_time_condition=np.logical_and(included_time_condition,f[shot]['ip'][:]<ip_maximum)
+                    included_time_inds=np.atleast_1d(np.argwhere(included_time_condition).squeeze())
                     if len(included_time_inds)>0:
                         recorded_shots.extend([int(shot)]*len(included_time_inds))
                         recorded_times.extend(f['times'][included_time_inds])
@@ -87,8 +99,8 @@ def standard_dataset(data_filename,profiles,actuators,parameters,
                         for actuator_ind,actuator in enumerate(actuators):
                             tmp_arr[:,actuator_ind]=f[shot][actuator][included_time_inds]
                         actuators_arr.extend(tmp_arr)
-            if (nshot+1) % SHOTS_PER_PRINT:
-                print(f'{(nshot+1):5d}/{len(shots)} shots ({(time.time()-prev_time)/SHOTS_PER_PRINT:0.2f}s/shot)')
+            if not (nshot+1) % SHOTS_PER_PRINT:
+                print(f'{(nshot+1):5d}/{len(shots)} shots ({(time.time()-prev_time):0.2e}s)')
                 prev_time=time.time()
     print(f'...took {(time.time()-start_time)/60:0.2f}min,',
           f'{included_shot_count}/{len(shots)} shots included,',
