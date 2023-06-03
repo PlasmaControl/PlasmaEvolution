@@ -3,3 +3,5 @@
 *.tar
 *~
 __pycache__
+multiroot
+CFETR
