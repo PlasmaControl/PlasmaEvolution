@@ -28,6 +28,7 @@ normalizations={
     'volume_EFIT01': {'mean': 0, 'std': 10},
     'betan_EFIT01': {'mean': 0, 'std': 1},
     'epedHeight': {'mean': 0, 'std': 5e-3},
+    'eped_te_prediction': {'mean': 0, 'std': 1},
     'epedHeightForNe1': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe3': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe5': {'mean': 0, 'std': 5e-3},
