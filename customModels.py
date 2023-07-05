@@ -68,8 +68,11 @@ class PlasmaConv2D(torch.nn.Module):
             torch.nn.Conv1d(10,len(profiles),2,padding='same'),
             torch.nn.ReLU(),
         )
-    def forward(self, input_profiles, input_actuators, input_parameters):
-        preAddProfiles=self.conv(input_profiles)
+    def forward(self, profiles_tensor, input_actuators, input_parameters):
+        lookahead=input_actuators.shape[1]-input_parameters.shape[1] #present timestep -lookahead-1
+        present_profiles=profiles_tensor[:,-lookahead-1,:,:]
+
+        preAddProfiles=self.conv(present_profiles) #input_profiles)
         preAddActuators=self.actuatorPreRNN(input_actuators)
         _, (preAddActuators, _)=self.actuatorRNN(preAddActuators)
         preAddActuators=preAddActuators.permute([1,2,0])

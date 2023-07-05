@@ -13,6 +13,8 @@ import configparser
 import os
 import sys
 
+import dataSettings
+
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
 else:
@@ -32,11 +34,14 @@ profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
 space_inds=[int(key) for key in config['inputs']['space_inds'].split()]
+# if not defined, use all data points
+if len(space_inds)==0:
+    space_inds=list(range(dataSettings.nx))
 
 # dump to same location as the config filename, with .tar instead of .cfg
 output_filename=os.path.basename(config_filename).split('.cfg')[0]+".tar"
 
-datasetParams={'lookahead': lookahead, 'lookback': lookback, 'space_inds': space_inds, 'ip_maximum': 1.2e6}
+datasetParams={'lookahead': lookahead, 'lookback': lookback, 'space_inds': space_inds} #, 'ip_maximum': 1.2e6}
 if model_type=='PlasmaGRU':
     model = customModels.PlasmaGRU(profiles, actuators, parameters)
     loss_fn = customLosses.combinedLoss(energyWeight)

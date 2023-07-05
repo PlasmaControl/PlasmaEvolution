@@ -35,7 +35,7 @@ class myMSELoss(torch.nn.Module):
                 profiles, actuators, parameters):
         lookahead=actuators_tensor.shape[1]-parameters_tensor.shape[1] #present timestep -lookahead-1
         return torch.nn.MSELoss(reduction='mean')(profiles_predicted_tensor,
-                                                  profiles_tensor[:,-lookahead:,:,:])
+                                                  profiles_tensor[:,-lookahead,:,:])
 
 class simpleMSELoss(torch.nn.Module):
     def __init__(self):

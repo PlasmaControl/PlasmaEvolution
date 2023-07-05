@@ -38,8 +38,8 @@ normalizations={
 # exclude the shot from the dataset
 deviation_cutoff=10
 
-min_shot=140888
-max_shot=190000
+min_shot=180000 #140888
+max_shot=180100 #190000
 val_indices=[5]
 test_indices=[0]
 
