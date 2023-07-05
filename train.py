@@ -1,5 +1,5 @@
 import torch
-torch.manual_seed(0)
+#torch.manual_seed(0)
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import random_split
 import time
@@ -39,7 +39,7 @@ if len(space_inds)==0:
     space_inds=list(range(dataSettings.nx))
 
 # dump to same location as the config filename, with .tar instead of .cfg
-output_filename=os.path.basename(config_filename).split('.cfg')[0]+".tar"
+output_filename=os.path.join(config['model']['output_dir'],config['model']['output_filename_base']+".tar")
 
 datasetParams={'lookahead': lookahead, 'lookback': lookback, 'space_inds': space_inds} #, 'ip_maximum': 1.2e6}
 if model_type=='PlasmaGRU':
@@ -71,7 +71,7 @@ val_losses=[]
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
 print('Training...')
-if torch.cuda.is_available():
+if False: #torch.cuda.is_available():
     device='cuda'
     if torch.cuda.device_count() > 1:
       model = torch.nn.DataParallel(model)
