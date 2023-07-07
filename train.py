@@ -7,7 +7,7 @@ import time
 import customModels
 import customLosses
 import customDatasetMakers
-from dataSettings import nx, train_shots, val_shots
+from dataSettings import nx, train_shots, val_shots, test_shots
 
 import configparser
 import os
@@ -23,10 +23,16 @@ else:
 config=configparser.ConfigParser()
 config.read(config_filename)
 data_filename=config['data']['data_filename']
+use_preprocessed_data=(config['data']['use_preprocessed_data']=='True')
+preprocessed_data_filenamebase=config['data']['preprocessed_data_filenamebase']
+dump_preprocessed_data=(config['data']['dump_preprocessed_data']=='True')
+ip_minimum=float(config['data']['ip_minimum'])
+ip_maximum=float(config['data']['ip_maximum'])
 model_type=config['model']['model_type']
 n_epochs=int(config['optimization']['n_epochs'])
 batch_size=int(config['optimization']['batch_size'])
 lr=float(config['optimization']['lr'])
+lr_gamma=float(config['optimization']['lr_gamma'])
 energyWeight=float(config['optimization']['energyWeight'])
 lookahead=int(config['inputs']['lookahead'])
 lookback=int(config['inputs']['lookback'])
@@ -41,7 +47,8 @@ if len(space_inds)==0:
 # dump to same location as the config filename, with .tar instead of .cfg
 output_filename=os.path.join(config['model']['output_dir'],config['model']['output_filename_base']+".tar")
 
-datasetParams={'lookahead': lookahead, 'lookback': lookback, 'space_inds': space_inds} #, 'ip_maximum': 1.2e6}
+datasetParams={'lookahead': lookahead, 'lookback': lookback,
+               'space_inds': space_inds, 'ip_minimum': ip_minimum, 'ip_maximum': ip_maximum}
 if model_type=='PlasmaGRU':
     model = customModels.PlasmaGRU(profiles, actuators, parameters)
     loss_fn = customLosses.combinedLoss(energyWeight)
@@ -54,24 +61,35 @@ else:
     model = customModels.ProfilesFromActuators(profiles, actuators, len(space_inds))
     loss_fn = customLosses.simpleMSELoss()
 
-if (train_shots is None) or (val_shots is None):
-    dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,**datasetParams)
-    ntrain=int(0.7*len(dataset))
-    nval=int(0.2*len(dataset))
-    ntest=len(dataset)-ntrain-nval
-    train_dataset, val_dataset, _ = random_split(dataset,[ntrain,nval,ntest])
+if use_preprocessed_data:
+    train_dataset=torch.load(f'{preprocessed_data_filenamebase}train.pt')
+    val_dataset=torch.load(f'{preprocessed_data_filenamebase}val.pt')
 else:
-    train_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,shots=train_shots,**datasetParams)
-    val_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,shots=val_shots,**datasetParams)
+    if (train_shots is None) or (val_shots is None):
+        dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,**datasetParams)
+        ntrain=int(0.8*len(dataset))
+        nval=int(0.1*len(dataset))
+        ntest=len(dataset)-ntrain-nval
+        train_dataset, val_dataset, test_dataset = random_split(dataset,[ntrain,nval,ntest])
+    else:
+        train_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,shots=train_shots,**datasetParams)
+        val_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,shots=val_shots,**datasetParams)
+        if dump_preprocessed_data:
+            test_dataset=customDatasetMakers.standard_dataset(data_filename,profiles,actuators,parameters,shots=test_shots,**datasetParams)
+    if dump_preprocessed_data:
+        torch.save(train_dataset,f'{preprocessed_data_filenamebase}train.pt')
+        torch.save(val_dataset,f'{preprocessed_data_filenamebase}val.pt')
+        torch.save(test_dataset,f'{preprocessed_data_filenamebase}test.pt')
 train_loader=DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader=DataLoader(val_dataset, batch_size=batch_size)
 
 train_losses=[]
 val_losses=[]
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20,50,80], gamma=lr_gamma, verbose=True)
 
 print('Training...')
-if False: #torch.cuda.is_available():
+if torch.cuda.is_available():
     device='cuda'
     if torch.cuda.device_count() > 1:
       model = torch.nn.DataParallel(model)
@@ -86,8 +104,8 @@ for epoch in range(n_epochs):
     model.train()
     train_losses.append(0)
     for *model_inputs, _ in train_loader:
-        for model_input in model_inputs:
-            model_input=model_input.to(device)
+        for i in range(len(model_inputs)):
+            model_inputs[i]=model_inputs[i].to(device)
         optimizer.zero_grad()
         model_output=model(*model_inputs)
         train_loss=loss_fn(model_output,
@@ -97,13 +115,14 @@ for epoch in range(n_epochs):
         train_loss.backward()
         optimizer.step()
         train_losses[-1]+=train_loss.item()*len(model_inputs[0]) # mean * # samples in batch
+    scheduler.step()
     train_losses[-1]/=len(train_dataset) # now divide by total number of samples to get mean over steps/batches
     model.eval()
     with torch.no_grad():
         val_losses.append(0)
         for *model_inputs, _ in val_loader:
-            for model_input in model_inputs:
-                model_input=model_input.to(device)
+            for i in range(len(model_inputs)):
+                model_inputs[i]=model_inputs[i].to(device)
             model_output = model(*model_inputs)
             val_loss = loss_fn(model_output,
                                *model_inputs,
@@ -117,6 +136,7 @@ for epoch in range(n_epochs):
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
             'train_losses': train_losses,
             'val_losses': val_losses,
             'profiles': profiles,

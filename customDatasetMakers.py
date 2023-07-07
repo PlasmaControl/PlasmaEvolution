@@ -49,27 +49,38 @@ def standard_dataset(data_filename,profiles,actuators,parameters,
                     shot_included=False
                     for t_ind in range(lookback,len(times)-lookahead):
                         total_timestep_count+=1
-                        tmp_profiles_arr=[]
-                        for profile in profiles:
-                            tmp_profiles_arr.append(f[shot][profile][t_ind-profile_lookback:t_ind+lookahead+1])
-                        tmp_actuators_arr=[]
-                        for actuator in actuators:
-                            tmp_actuators_arr.append(f[shot][actuator][t_ind-lookback:t_ind+lookahead+1])
-                        tmp_parameters_arr=[]
-                        for parameter in parameters:
-                            tmp_parameters_arr.append(f[shot][parameter][t_ind-lookback:t_ind+1])
-                        tmp_profiles_arr=np.array(tmp_profiles_arr)
-                        tmp_actuators_arr=np.array(tmp_actuators_arr)
-                        tmp_parameters_arr=np.array(tmp_parameters_arr)
-                        if profiles_ok(tmp_profiles_arr) \
-                           and scalars_ok(tmp_actuators_arr) and scalars_ok(tmp_parameters_arr):
-                            profiles_arr.append(tmp_profiles_arr)
-                            actuators_arr.append(tmp_actuators_arr)
-                            parameters_arr.append(tmp_parameters_arr)
-                            recorded_shots.append(int(shot))
-                            recorded_times.append(times[t_ind])
-                            included_timestep_count+=1
-                            shot_included=True
+                        ip_in_bounds=True
+                        if (ip_minimum is not None) or (ip_maximum is not None):
+                            if 'ip' not in f[shot].keys():
+                                ip_in_bounds=False
+                            else:
+                                ip_window=f[shot]['ip'][t_ind-profile_lookback:t_ind+lookahead+1]
+                                if ip_minimum is not None:
+                                    ip_in_bounds=ip_in_bounds and np.all(ip_window>ip_minimum)
+                                if ip_maximum is not None:
+                                    ip_in_bounds=ip_in_bounds and np.all(ip_window<ip_maximum)
+                        if ip_in_bounds:
+                            tmp_profiles_arr=[]
+                            for profile in profiles:
+                                tmp_profiles_arr.append(f[shot][profile][t_ind-profile_lookback:t_ind+lookahead+1])
+                            tmp_actuators_arr=[]
+                            for actuator in actuators:
+                                tmp_actuators_arr.append(f[shot][actuator][t_ind-lookback:t_ind+lookahead+1])
+                            tmp_parameters_arr=[]
+                            for parameter in parameters:
+                                tmp_parameters_arr.append(f[shot][parameter][t_ind-lookback:t_ind+1])
+                            tmp_profiles_arr=np.array(tmp_profiles_arr)
+                            tmp_actuators_arr=np.array(tmp_actuators_arr)
+                            tmp_parameters_arr=np.array(tmp_parameters_arr)
+                            if profiles_ok(tmp_profiles_arr) \
+                               and scalars_ok(tmp_actuators_arr) and scalars_ok(tmp_parameters_arr):
+                                profiles_arr.append(tmp_profiles_arr)
+                                actuators_arr.append(tmp_actuators_arr)
+                                parameters_arr.append(tmp_parameters_arr)
+                                recorded_shots.append(int(shot))
+                                recorded_times.append(times[t_ind])
+                                included_timestep_count+=1
+                                shot_included=True
                     if shot_included:
                         included_shot_count+=1
                 else:

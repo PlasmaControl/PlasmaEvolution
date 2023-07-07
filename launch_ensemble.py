@@ -10,7 +10,7 @@ config=configparser.ConfigParser()
 config.read(baseconfig_filename)
 output_dir=config['model']['output_dir']
 output_filename_base=config['model']['output_filename_base']
-for ensemble_number in range(2):
+for ensemble_number in range(5,6):
     config_filename=os.path.join(output_dir,f'config{ensemble_number}')
     config['model']['output_filename_base']=output_filename_base+str(ensemble_number)
     with open(config_filename,'w') as f:
@@ -18,16 +18,17 @@ for ensemble_number in range(2):
     slurm_text=f'''#!/bin/bash 
 
 #SBATCH -N 1 
-#SBATCH -c 8
+#SBATCH -c 32
 #SBATCH --mem 48G
 #SBATCH -G 1
 #SBATCH -o {output_dir}log{ensemble_number}.out
-#SBATCH -t 00:02:00
+#SBATCH -t 05:00:00
 
 root_dir={root_dir}
+module load anaconda
 conda activate torch
 cd $root_dir
-python train.py {config_filename}
+python -u train.py {config_filename}
 
 exit'''
     slurm_filename=os.path.join(output_dir,f'job{ensemble_number}.slurm')
