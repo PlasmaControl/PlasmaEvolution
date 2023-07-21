@@ -1,7 +1,7 @@
 # MIT Gang Text
 On Engaging, you probably need to first do a module load:
 ```
-module load engaging/anaconda/2.3.0
+module load anaconda3/2022.10
 ```
 then create a conda environment out of the `environment.yml` file in this repo like such:
 ```
