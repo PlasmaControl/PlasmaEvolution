@@ -3,6 +3,7 @@ import time
 import h5py
 import numpy as np
 from torch.utils.data import TensorDataset
+from tqdm import tqdm
 
 import dataSettings
 
@@ -25,7 +26,7 @@ def standard_dataset(data_filename,profiles,actuators,parameters,
                      rnn=True,
                      space_inds=[6,26], #direct-from-actuator
                      profile_lookback=1, lookback=6, lookahead=1): #rnn
-    print('Building dataset...')
+    print(f"Building dataset from file {data_filename}...")
     start_time=time.time()
     with h5py.File(data_filename,'r') as f:
         times=f['times'][:]
@@ -40,11 +41,11 @@ def standard_dataset(data_filename,profiles,actuators,parameters,
         prev_time=time.time()
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
         SHOTS_PER_PRINT = 1000
-        for nshot,shot in enumerate(shots):
+        for nshot,shot in enumerate(tqdm(shots)):
             if (shot in f) and np.all([key in f[shot].keys() for key in actuators+profiles+parameters]) \
                and np.all([allTimesInBounds(dataSettings.normalize(f[shot][key][:],key),dataSettings.deviation_cutoff) for key in actuators+profiles+parameters]) \
                and not (exclude_ech and ('ech_pwr_total' in f[shot]) and np.sum(f[shot]['ech_pwr_total'][:])) \
-               and not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs)):
+               and not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()] in excluded_runs)):
                 if rnn:
                     shot_included=False
                     for t_ind in range(lookback,len(times)-lookahead):
