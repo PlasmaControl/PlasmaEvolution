@@ -1,3 +1,5 @@
+import numpy as np
+
 # number of x points in profile data
 nx=33
 # timestep in dataset, in seconds
@@ -42,7 +44,7 @@ deviation_cutoff=10
 min_shot=140888
 #max_shot=180100
 max_shot=190000
-val_indices=[5]
+val_indices=[np.random.randint(1,10)]
 test_indices=[0]
 
 train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in val_indices+test_indices]

@@ -7,7 +7,7 @@ import time
 import customModels
 import customLosses
 import customDatasetMakers
-from dataSettings import nx, train_shots, val_shots, test_shots
+from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
 
 import configparser
 import os
@@ -86,7 +86,7 @@ val_loader=DataLoader(val_dataset, batch_size=batch_size)
 train_losses=[]
 val_losses=[]
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20,50,80], gamma=lr_gamma, verbose=True)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
 
 print('Training...')
 if torch.cuda.is_available():
@@ -134,6 +134,7 @@ for epoch in range(n_epochs):
         print(f"Checkpoint")
         torch.save({
             'epoch': epoch,
+            'val_indices': val_indices,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict(),
