@@ -1,6 +1,7 @@
 *.png
 *.h5
 *.tar
+*.pt
 *~
 __pycache__
 multiroot

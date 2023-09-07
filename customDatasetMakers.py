@@ -54,7 +54,7 @@ def standard_dataset(data_filename,profiles,actuators,parameters,
                             if 'ip' not in f[shot].keys():
                                 ip_in_bounds=False
                             else:
-                                ip_window=f[shot]['ip'][t_ind-profile_lookback:t_ind+lookahead+1]
+                                ip_window=f[shot]['ip'][t_ind-lookback:t_ind+lookahead+1]
                                 if ip_minimum is not None:
                                     ip_in_bounds=ip_in_bounds and np.all(ip_window>ip_minimum)
                                 if ip_maximum is not None:
