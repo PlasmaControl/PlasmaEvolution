@@ -1,6 +1,25 @@
 from dataSettings import nx
 import copy
 import torch
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+class IanGRU(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_dim=200):
+        super().__init__()
+        self.encoder=torch.nn.Linear(input_dim, hidden_dim)
+        # batch_size x time_length x input_dim
+        self.rnn=torch.nn.LSTM(
+            hidden_dim, hidden_dim,
+            batch_first=True
+        )
+        self.decoder=torch.nn.Linear(hidden_dim, output_dim)
+    def forward(self, padded_input, padded_lens):
+        embedding=self.encoder(padded_input)
+        packed_embedding=pack_padded_sequence(embedding, padded_lens, batch_first=True)
+        packed_embedding_evolved,_=self.rnn(packed_embedding)
+        embedding_evolved,_=pad_packed_sequence(packed_embedding_evolved, batch_first=True)
+        padded_output=self.decoder(embedding_evolved)
+        return padded_output
 
 # simple mapping, given just actuators over time try to predict profiles
 # I imagine lookback=0 is most sensible
