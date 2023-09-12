@@ -24,7 +24,7 @@ def preprocess_data(processed_data_filename,
                     raw_data_filename,profiles,scalars,
                     shots=None,lookahead=1,
                     ip_minimum=None,ip_maximum=None,
-                    excluded_runs=[],exclude_ech=True):
+                    excluded_runs=[],exclude_ech=True, max_num_shots=np.inf):
     print(f'Building dataset {processed_data_filename}...')
     start_time=time.time()
     with h5py.File(raw_data_filename,'r') as f:
@@ -81,6 +81,9 @@ def preprocess_data(processed_data_filename,
             if not (nshot+1) % SHOTS_PER_PRINT:
                 print(f'{(nshot+1):5d}/{len(used_shots)} shots ({(time.time()-prev_time):0.2e}s)')
                 prev_time=time.time()
+            if included_shot_count>=max_num_shots:
+                print(f'Breaking early, max number of shots acquired ({max_num_shots})')
+                break
     print(f'...took {(time.time()-start_time)/60:0.2f}min,',
           f'{included_shot_count}/{len(used_shots)} shots included,',
           f'{included_timestep_count}/{total_timestep_count} timesteps included')

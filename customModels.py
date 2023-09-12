@@ -15,9 +15,12 @@ class IanGRU(torch.nn.Module):
         self.decoder=torch.nn.Linear(hidden_dim, output_dim)
     def forward(self, padded_input, padded_lens):
         embedding=self.encoder(padded_input)
+        # annoying fix for data parallelism with rnn's, see pytorch FAQ
+        #total_length = embedding.size(1) # get the max sequence length...
         packed_embedding=pack_padded_sequence(embedding, padded_lens, batch_first=True)
         packed_embedding_evolved,_=self.rnn(packed_embedding)
         embedding_evolved,_=pad_packed_sequence(packed_embedding_evolved, batch_first=True)
+                                                #total_length=total_length) # ...and put it here
         padded_output=self.decoder(embedding_evolved)
         return padded_output
 

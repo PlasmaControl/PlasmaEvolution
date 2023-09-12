@@ -24,6 +24,10 @@ datasetParams={'raw_data_filename': raw_data_filename, 'profiles': profiles, 'sc
                'lookahead': lookahead,
                'ip_minimum': ip_minimum, 'ip_maximum': ip_maximum}
 
+# useful for testing
+if False:
+    datasetParams['max_num_shots': 5]
+
 print(raw_data_filename)
 train_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'train.pkl',shots=train_shots,**datasetParams)
 val_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'val.pkl',shots=val_shots,**datasetParams)

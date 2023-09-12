@@ -20,6 +20,10 @@ normalizations={
     'ip': {'mean': 0, 'std': 1e6},
     'bt': {'mean': 0, 'std': 1},
     'dstdenp': {'mean': 0, 'std': 1},
+    'gasA': {'mean': 0, 'std': 1},
+    'gasB': {'mean': 0, 'std': 1},
+    'gasC': {'mean': 0, 'std': 1},
+    'gasD': {'mean': 0, 'std': 1},
     'li_EFIT01': {'mean': 0, 'std': 1},
     'tribot_EFIT01': {'mean': 0, 'std': 1},
     'tritop_EFIT01': {'mean': 0, 'std': 1},
@@ -43,7 +47,7 @@ deviation_cutoff=10
 #min_shot=180000
 min_shot=140888
 #max_shot=180100
-max_shot=190000
+max_shot=200000
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
 
