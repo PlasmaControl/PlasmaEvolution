@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset
-from customModels import IanGRU
+from customModels import IanGRU, IanMLP
 
 from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
 
@@ -49,14 +49,29 @@ val_lengths=[len(sample) for sample in x_val]
 
 state_length=len(profiles)*33+len(parameters)
 actuator_length=len(actuators)
-model=IanGRU(input_dim=state_length+2*actuator_length, output_dim=state_length)
-loss_fn = torch.nn.MSELoss()
+model=IanMLP(input_dim=state_length+2*actuator_length, output_dim=state_length)
+
+def masked_loss(loss_fn,
+                output, target,
+                lengths):
+    mask = torch.zeros(len(lengths), max(lengths))
+    for i, length in enumerate(lengths):
+        mask[i, :length]=1
+    mask.to(output.device)
+    output=output*mask[..., None]
+    target=target*mask[..., None]
+    # normalize by dividing out number of time samples in all batches
+    # times the state size
+    return loss_fn(output, target) / (sum(lengths)*output.size(-1))
+
+# I divide out by myself since different sequences/batches have different sizes
+loss_fn=torch.nn.MSELoss(reduction='sum')
 
 train_losses=[]
 val_losses=[]
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,lr_gamma)
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma)
 
 print('Training...')
 if torch.cuda.is_available():
@@ -100,14 +115,16 @@ for epoch in range(n_epochs):
         padded_x.to(device)
 
         optimizer.zero_grad()
-        model_output=model(padded_x, length_bucket)
-        train_loss=loss_fn(model_output, padded_y)
+        model_output=model(padded_x) #, length_bucket)
+        train_loss=masked_loss(loss_fn,
+                               model_output, padded_y,
+                               length_bucket)
         # Backpropagation
         train_loss.backward()
         optimizer.step()
         train_losses.append(train_loss.item())
     scheduler.step()
-    avg_train_losses.append(sum(train_losses)/len(train_losses)/state_length) # now divide by total number of samples to get mean over steps/batches
+    avg_train_losses.append(sum(train_losses)/len(train_losses)) # now divide by total number of samples to get mean over steps/batches
     model.eval()
     val_losses=[]
     with torch.no_grad():
@@ -118,10 +135,12 @@ for epoch in range(n_epochs):
             padded_x=pad_sequence(x_bucket, batch_first=True)
             padded_y=pad_sequence(y_bucket, batch_first=True)
             padded_x.to(device)
-            model_output = model(padded_x, length_bucket)
-            val_loss = loss_fn(model_output, padded_y)
+            model_output = model(padded_x) #, length_bucket)
+            val_loss = masked_loss(loss_fn,
+                                   model_output, padded_y,
+                                   length_bucket)
             val_losses.append(val_loss.item())
-        avg_val_losses.append(sum(val_losses)/len(val_losses)/state_length)
+        avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
     if early_stopping and avg_val_losses[-1]==min(avg_val_losses):
         print(f"Checkpoint")
