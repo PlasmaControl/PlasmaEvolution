@@ -10,7 +10,7 @@ config=configparser.ConfigParser()
 config.read(baseconfig_filename)
 output_dir=config['model']['output_dir']
 output_filename_base=config['model']['output_filename_base']
-for ensemble_number in range(5,6):
+for ensemble_number in range(1):
     config_filename=os.path.join(output_dir,f'config{ensemble_number}')
     config['model']['output_filename_base']=output_filename_base+str(ensemble_number)
     with open(config_filename,'w') as f:
@@ -28,7 +28,7 @@ root_dir={root_dir}
 module load anaconda
 conda activate torch
 cd $root_dir
-python -u train.py {config_filename}
+python -u ian_train.py {config_filename}
 
 exit'''
     slurm_filename=os.path.join(output_dir,f'job{ensemble_number}.slurm')

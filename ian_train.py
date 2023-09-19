@@ -57,7 +57,7 @@ def masked_loss(loss_fn,
     mask = torch.zeros(len(lengths), max(lengths))
     for i, length in enumerate(lengths):
         mask[i, :length]=1
-    mask.to(output.device)
+    mask=mask.to(output.device)
     output=output*mask[..., None]
     target=target*mask[..., None]
     # normalize by dividing out number of time samples in all batches
@@ -112,7 +112,8 @@ for epoch in range(n_epochs):
 
         padded_x=pad_sequence(x_bucket, batch_first=True)
         padded_y=pad_sequence(y_bucket, batch_first=True)
-        padded_x.to(device)
+        padded_x=padded_x.to(device)
+        padded_y=padded_y.to(device)
 
         optimizer.zero_grad()
         model_output=model(padded_x) #, length_bucket)
@@ -134,7 +135,8 @@ for epoch in range(n_epochs):
             length_bucket=val_length_buckets[which_bucket]
             padded_x=pad_sequence(x_bucket, batch_first=True)
             padded_y=pad_sequence(y_bucket, batch_first=True)
-            padded_x.to(device)
+            padded_x=padded_x.to(device)
+            padded_y=padded_y.to(device)
             model_output = model(padded_x) #, length_bucket)
             val_loss = masked_loss(loss_fn,
                                    model_output, padded_y,
