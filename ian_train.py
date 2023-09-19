@@ -10,6 +10,8 @@ import os
 import sys
 import time
 
+models={'IanGRU': IanGRU, 'IanMLP': IanMLP}
+
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
 else:
@@ -29,8 +31,10 @@ profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
 
+model_hyperparams=config[model_type]
+
 # dump to same location as the config filename, with .tar instead of .cfg
-output_filename=os.path.join(config['model']['output_dir'],config['model']['output_filename_base']+".tar")
+output_filename=os.path.join(config['model']['output_dir'],model_type+".tar")
 
 print('Organizing train data from preprocessed_data')
 start_time=time.time()
@@ -47,7 +51,8 @@ print(f'...took {(time.time()-start_time):0.2f}s')
 
 state_length=len(profiles)*33+len(parameters)
 actuator_length=len(actuators)
-model=IanMLP(input_dim=state_length+2*actuator_length, output_dim=state_length)
+model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
+                         **model_hyperparams)
 
 def masked_loss(loss_fn,
                 output, target,
