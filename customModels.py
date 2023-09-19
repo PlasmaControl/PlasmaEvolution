@@ -4,15 +4,16 @@ import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 class IanMLP(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=100):
+    def __init__(self, input_dim, output_dim,
+                 hidden_dim=100, extra_layers=1):
         super().__init__()
-        self.mlp=torch.nn.Sequential(
-            torch.nn.Linear(input_dim, hidden_dim),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, output_dim)
-        )
+        self.mlp=torch.nn.Sequential()
+        self.mlp.append(torch.nn.Linear(input_dim, hidden_dim))
+        self.mlp.append(torch.nn.ReLU())
+        for i in range(extra_layers):
+            self.mlp.append(torch.nn.Linear(hidden_dim, hidden_dim))
+            self.mlp.append(torch.nn.ReLU())
+        self.mlp.append(torch.nn.Linear(hidden_dim, output_dim))
     def forward(self, padded_input):
         return self.mlp(padded_input)
 
