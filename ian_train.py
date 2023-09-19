@@ -25,6 +25,7 @@ bucket_size=int(config['optimization']['bucket_size'])
 n_epochs=int(config['optimization']['n_epochs'])
 lr=float(config['optimization']['lr'])
 lr_gamma=float(config['optimization']['lr_gamma'])
+lr_stop_epoch=int(config['optimization']['lr_stop_epoch'])
 early_saving=bool(config['optimization']['early_saving'])
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
@@ -73,7 +74,7 @@ train_losses=[]
 val_losses=[]
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma)
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
 
 print('Training...')
 if torch.cuda.is_available():
