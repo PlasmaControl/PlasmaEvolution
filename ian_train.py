@@ -98,7 +98,7 @@ def make_bucket(arrays, bucket_size):
         current_bucket.append(arr)
         current_len+=arr_len
         if current_len > bucket_size:
-            buckets.append(np.array(current_bucket))
+            buckets.append(current_bucket)
             current_bucket=[]
             current_len=0
     return buckets
@@ -116,16 +116,11 @@ avg_val_losses=[]
 for epoch in range(n_epochs):
     model.train()
     train_losses=[]
-    for which_bucket in torch.randperm(len(train_x_buckets)): #range(len(train_x_buckets)):
+    for which_bucket in torch.randperm(len(train_x_buckets)):
         random_order=torch.randperm(len(train_x_buckets[which_bucket]))
-        x_bucket=train_x_buckets[which_bucket][random_order]
-        y_bucket=train_y_buckets[which_bucket][random_order]
-        length_bucket=train_length_buckets[which_bucket][random_order]
-        # randomize within bucket for training
-        # indices = torch.randperm(len(x_bucket))
-        # x_bucket = [x_bucket[i] for i in indices]
-        # y_bucket = [y_bucket[i] for i in indices]
-        # length_bucket = [length_bucket[i] for i in indices]
+        x_bucket=[train_x_buckets[which_bucket][i] for i in random_order]
+        y_bucket=[train_y_buckets[which_bucket][i] for i in random_order]
+        length_bucket=[train_length_buckets[which_bucket][i] for i in random_order]
 
         padded_x=pad_sequence(x_bucket, batch_first=True)
         padded_y=pad_sequence(y_bucket, batch_first=True)

@@ -98,7 +98,7 @@ def ian_dataset(processed_data_filename,
                 sort_by_size=True):
     with open(processed_data_filename, 'rb') as f:
         processed_data=pickle.load(f)
-    # normalize and remove outliers
+    # normalize
     for sig in profiles + parameters + actuators:
         processed_data[sig]=dataSettings.normalize(processed_data[sig], sig)
     in_sample,in_sample,out_sample,out_sample,shots,times=[],[],[],[],[],[]
