@@ -18,14 +18,16 @@ class IanMLP(torch.nn.Module):
 
 class IanRNN(torch.nn.Module):
     def __init__(self, input_dim, output_dim,
-                 encoder_dim=100, encoder_layers=1,
+                 encoder_dim=100, encoder_extra_layers=1,
                  rnn_dim=100,
-                 decoder_dim=100, decoder_layers=1
+                 decoder_dim=100, decoder_extra_layers=1
                  ):
         super().__init__()
         self.encoder = torch.nn.Sequential()
-        for i in range(encoder_layers):
-            self.encoder.append(torch.nn.Linear(input_dim, encoder_dim))
+        self.encoder.append(torch.nn.Linear(input_dim, encoder_dim))
+        self.encoder.append(torch.nn.ReLU())
+        for i in range(encoder_extra_layers):
+            self.encoder.append(torch.nn.Linear(encoder_dim, encoder_dim))
             self.encoder.append(torch.nn.ReLU())
         # batch_size x time_length x input_dim
         self.rnn=torch.nn.LSTM(
@@ -33,8 +35,10 @@ class IanRNN(torch.nn.Module):
             batch_first=True
         )
         self.decoder = torch.nn.Sequential()
-        for i in range(decoder_layers):
-            self.decoder.append(torch.nn.Linear(encoder_dim, decoder_dim))
+        self.decoder.append(torch.nn.Linear(rnn_dim, decoder_dim))
+        self.decoder.append(torch.nn.ReLU())
+        for i in range(decoder_extra_layers):
+            self.decoder.append(torch.nn.Linear(decoder_dim, decoder_dim))
             self.decoder.append(torch.nn.ReLU())
         self.decoder.append(torch.nn.Linear(decoder_dim, output_dim))
     def forward(self, padded_input):

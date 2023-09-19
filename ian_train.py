@@ -25,8 +25,7 @@ bucket_size=int(config['optimization']['bucket_size'])
 n_epochs=int(config['optimization']['n_epochs'])
 lr=float(config['optimization']['lr'])
 lr_gamma=float(config['optimization']['lr_gamma'])
-early_stopping=bool(config['optimization']['early_stopping'])
-energyWeight=float(config['optimization']['energyWeight'])
+early_saving=bool(config['optimization']['early_saving'])
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
@@ -34,7 +33,7 @@ parameters=config['inputs']['parameters'].split()
 model_hyperparams={key: int(val) for key,val in dict(config[model_type]).items()}
 
 # dump to same location as the config filename, with .tar instead of .cfg
-output_filename=os.path.join(config['model']['output_dir'],model_type+".tar")
+output_filename=os.path.join(config['model']['output_dir'],config['model']['output_filename_base']+".tar")
 
 print('Organizing train data from preprocessed_data')
 start_time=time.time()
@@ -99,7 +98,7 @@ def make_bucket(arrays, bucket_size):
         current_bucket.append(arr)
         current_len+=arr_len
         if current_len > bucket_size:
-            buckets.append(current_bucket)
+            buckets.append(np.array(current_bucket))
             current_bucket=[]
             current_len=0
     return buckets
@@ -117,10 +116,11 @@ avg_val_losses=[]
 for epoch in range(n_epochs):
     model.train()
     train_losses=[]
-    for which_bucket in range(len(train_x_buckets)):
-        x_bucket=train_x_buckets[which_bucket]
-        y_bucket=train_y_buckets[which_bucket]
-        length_bucket=train_length_buckets[which_bucket]
+    for which_bucket in torch.randperm(len(train_x_buckets)): #range(len(train_x_buckets)):
+        random_order=torch.randperm(len(train_x_buckets[which_bucket]))
+        x_bucket=train_x_buckets[which_bucket][random_order]
+        y_bucket=train_y_buckets[which_bucket][random_order]
+        length_bucket=train_length_buckets[which_bucket][random_order]
         # randomize within bucket for training
         # indices = torch.randperm(len(x_bucket))
         # x_bucket = [x_bucket[i] for i in indices]
@@ -133,7 +133,7 @@ for epoch in range(n_epochs):
         padded_y=padded_y.to(device)
 
         optimizer.zero_grad()
-        model_output=model(padded_x) #, length_bucket)
+        model_output=model(padded_x)
         train_loss=masked_loss(loss_fn,
                                model_output, padded_y,
                                length_bucket)
@@ -161,7 +161,7 @@ for epoch in range(n_epochs):
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
-    if early_stopping and avg_val_losses[-1]==min(avg_val_losses):
+    if early_saving and avg_val_losses[-1]==min(avg_val_losses):
         print(f"Checkpoint")
         torch.save({
             'epoch': epoch,
