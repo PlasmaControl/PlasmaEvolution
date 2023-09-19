@@ -44,8 +44,6 @@ x_val, y_val, shots, times = ian_dataset(preprocessed_data_filenamebase+'val.pkl
                                          profiles, actuators, parameters,
                                          sort_by_size=True)
 print(f'...took {(time.time()-start_time):0.2f}s')
-train_lengths=[len(sample) for sample in x_train]
-val_lengths=[len(sample) for sample in x_val]
 
 state_length=len(profiles)*33+len(parameters)
 actuator_length=len(actuators)
@@ -60,7 +58,7 @@ def masked_loss(loss_fn,
     mask=mask.to(output.device)
     output=output*mask[..., None]
     target=target*mask[..., None]
-    # normalize by dividing out number of time samples in all batches
+    # normalize by dividing out true number of time samples in all batches
     # times the state size
     return loss_fn(output, target) / (sum(lengths)*output.size(-1))
 
@@ -86,14 +84,28 @@ model.to(device)
 start_time=time.time()
 prev_time=start_time
 
-# make buckets of near-even size
-train_x_buckets = [x_train[i:i + bucket_size] for i in range(0, len(x_train), bucket_size)]
-train_y_buckets = [y_train[i:i + bucket_size] for i in range(0, len(y_train), bucket_size)]
-train_length_buckets = [train_lengths[i:i + bucket_size] for i in range(0, len(train_lengths), bucket_size)]
+# make buckets of near-even size from a sorted array of arrays
+def make_bucket(arrays, bucket_size):
+    buckets=[]
+    current_bucket=[]
+    current_len=0
+    for arr in arrays:
+        arr_len=len(arr)
+        current_bucket.append(arr)
+        current_len+=arr_len
+        if current_len > bucket_size:
+            buckets.append(current_bucket)
+            current_bucket=[]
+            current_len=0
+    return buckets
 
-val_x_buckets = [x_val[i:i + bucket_size] for i in range(0, len(x_val), bucket_size)]
-val_y_buckets = [y_val[i:i + bucket_size] for i in range(0, len(y_val), bucket_size)]
-val_length_buckets = [val_lengths[i:i + bucket_size] for i in range(0, len(val_lengths), bucket_size)]
+train_x_buckets = make_bucket(x_train, bucket_size)
+train_y_buckets = make_bucket(y_train, bucket_size)
+train_length_buckets = [[len(arr) for arr in bucket] for bucket in train_x_buckets]
+
+val_x_buckets = make_bucket(x_val, bucket_size)
+val_y_buckets = make_bucket(y_val, bucket_size)
+val_length_buckets = [[len(arr) for arr in bucket] for bucket in val_x_buckets]
 
 avg_train_losses=[]
 avg_val_losses=[]
