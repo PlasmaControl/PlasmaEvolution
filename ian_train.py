@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset
-from customModels import IanGRU, IanMLP
+from customModels import IanRNN, IanMLP
 
 from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
 
@@ -10,7 +10,7 @@ import os
 import sys
 import time
 
-models={'IanGRU': IanGRU, 'IanMLP': IanMLP}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP}
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
@@ -31,7 +31,7 @@ profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
 
-model_hyperparams=config[model_type]
+model_hyperparams={key: int(val) for key,val in dict(config[model_type]).items()}
 
 # dump to same location as the config filename, with .tar instead of .cfg
 output_filename=os.path.join(config['model']['output_dir'],model_type+".tar")

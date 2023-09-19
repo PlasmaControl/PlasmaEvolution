@@ -16,33 +16,30 @@ class IanMLP(torch.nn.Module):
     def forward(self, padded_input):
         return self.mlp(padded_input)
 
-class IanGRU(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=100):
+class IanRNN(torch.nn.Module):
+    def __init__(self, input_dim, output_dim,
+                 encoder_dim=100, encoder_layers=1,
+                 rnn_dim=100,
+                 decoder_dim=100, decoder_layers=1
+                 ):
         super().__init__()
-        self.encoder=torch.nn.Sequential(
-            torch.nn.Linear(input_dim, hidden_dim),
-            #torch.nn.ReLU()
-        )
+        self.encoder = torch.nn.Sequential()
+        for i in range(encoder_layers):
+            self.encoder.append(torch.nn.Linear(input_dim, encoder_dim))
+            self.encoder.append(torch.nn.ReLU())
         # batch_size x time_length x input_dim
         self.rnn=torch.nn.LSTM(
-            hidden_dim, hidden_dim,
+            encoder_dim, rnn_dim,
             batch_first=True
         )
-        self.decoder=torch.nn.Sequential(
-            #torch.nn.Linear(hidden_dim, hidden_dim),
-            #torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, output_dim),
-        )
-    def forward(self, padded_input): #, padded_lens):
+        self.decoder = torch.nn.Sequential()
+        for i in range(decoder_layers):
+            self.decoder.append(torch.nn.Linear(encoder_dim, decoder_dim))
+            self.decoder.append(torch.nn.ReLU())
+        self.decoder.append(torch.nn.Linear(decoder_dim, output_dim))
+    def forward(self, padded_input):
         embedding=self.encoder(padded_input)
         embedding_evolved,_=self.rnn(embedding)
-        # this doesn't work with data parallelism and is annoying with just computation
-        #    time as a benefit, skipping for now
-        #total_length = embedding.size(1) # get the max sequence length...
-        #packed_embedding=pack_padded_sequence(embedding, padded_lens, batch_first=True)
-        #packed_embedding_evolved,_=self.rnn(packed_embedding)
-        #embedding_evolved,_=pad_packed_sequence(packed_embedding_evolved, batch_first=True)
-                                                #total_length=total_length) # ...and put it here
         padded_output=self.decoder(embedding_evolved)
         return padded_output
 
