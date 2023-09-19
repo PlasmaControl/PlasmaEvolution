@@ -170,6 +170,7 @@ for epoch in range(n_epochs):
             'profiles': profiles,
             'actuators': actuators,
             'parameters': parameters,
+            'model_hyperparams': model_hyperparams,
             #'space_inds': space_inds,
             'exclude_ech': True
         }, output_filename)
