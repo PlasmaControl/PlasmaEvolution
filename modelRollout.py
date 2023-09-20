@@ -18,12 +18,11 @@ import glob
 from customModels import IanRNN, IanMLP
 
 plotted_profiles=['zipfit_itempfit_rho','zipfit_edensfit_rho', 'zipfit_etempfit_rho', 'zipfit_trotfit_rho', 'qpsi_EFIT01'] #'zipfit_etempfit_rho'
-plotted_actuators=['pinj','tinj','dssdenest','ip']
+plotted_actuators=['pinj','tinj','ipsiptargt','dssdenest','ip']
+plotted_parameters=['li_EFIT01', 'tribot_EFIT01', 'tritop_EFIT01', 'dssdenest', 'kappa_EFIT01', 'volume_EFIT01']
 
 models={'IanRNN': IanRNN, 'IanMLP': IanMLP}
 #PRE_STEPS=78
-NSTEPS=35
-PLOT_STEP=4
 #test_shots=[187070]
 
 label_map={'zipfit_etempfit_rho': r'$T_e$',
@@ -34,12 +33,18 @@ label_map={'zipfit_etempfit_rho': r'$T_e$',
            'pinj': r'$P_{NBI}$',
            'tinj': r'$T_{NBI} (N m)$',
            'ip': r'$I_p$',
+           'li_EFIT01': 'li',
+           'tribot_EFIT01': r'$\delta_l$',
+           'tritop_EFIT01': r'$\delta_u$',
+           'kappa_EFIT01': r'$\kappa$',
+           'volume_EFIT01': 'V',
+           'ipsiptargt': r'$I_p^{target}$',
            'dssdenest': r'$<n_e>$'}
 
 model_dir='test_models'
 #saved_state=torch.load('test_models/IanRNN.tar', map_location=torch.device('cpu'))
 config=configparser.ConfigParser()
-config.read(os.path.join(model_dir,'config'))
+config.read(os.path.join(model_dir,'config2'))
 
 model_type=config['model']['model_type']
 profiles=config['inputs']['profiles'].split()
@@ -68,12 +73,11 @@ nrows=max(len(plotted_profiles),len(plotted_actuators))
 #fig,axes=plt.subplots(nrows=nrows,ncols=3,sharex='col')#,ncols=2,sharex='col')
 #axes=np.atleast_2d(axes)
 #axes=axes.T
-colors=cm.viridis(np.linspace(0,1,NSTEPS+1))
 
 @torch.no_grad()
 class ModelStepper:
     # max_loss determine by e.g. running modelStats.py to see loss over time
-    def __init__(self, initial_state, model_dir=model_dir, model_type='IanMLP', max_loss=1.0):
+    def __init__(self, initial_state, model_dir=model_dir, model_type=model_type, max_loss=1.0):
         self.models=[]
         num_model_options=0
         for input_filename in glob.glob(os.path.join(model_dir, f'{model_type}*.tar')):
@@ -91,8 +95,8 @@ class ModelStepper:
     def prediction_step(self, actuator_array):
         for which_model,model in enumerate(self.models):
             input_tensor=torch.cat((self.all_predictions[which_model],actuator_array))
-            import pdb; pdb.set_trace()
-            self.all_predictions[which_model]=model(input_tensor)
+            #import pdb; pdb.set_trace()
+            self.all_predictions[which_model]=model(input_tensor[None,:])[0]
     def get_predictions(self):
         return self.all_predictions
 
@@ -138,94 +142,34 @@ for step in range(time_length): #NSTEPS): # loop over predicted timesteps
 
 times=np.arange(start_time, start_time+time_length*int(dataSettings.DT*1e3), int(dataSettings.DT*1e3))
 rho_ind=10
-fig,axes=plt.subplots(len(profiles))
+fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),4, sharex='col')
+
+NSTEPS_PLOTTED=4
+colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
+plotted_time_inds=[int(t) for t in np.linspace(0, len(predicted_means), NSTEPS_PLOTTED, endpoint=False)]
 with torch.no_grad():
     for i,profile in enumerate(plotted_profiles):
-        axes[i].plot(times, [get_denormed_sig_from_state(state, profile)[rho_ind] for state in predicted_means])
+        axes[i,0].plot(times, [get_denormed_sig_from_state(state, profile)[rho_ind] for state in predicted_means],
+                       label='predicted', c='k')
+        axes[i,0].plot(times, [get_denormed_sig_from_state(state, profile)[rho_ind] for state in x_test[sample_ind]],
+                       label='real', c='k', linestyle='--')
+        axes[i,0].set_ylabel(label_map[profile])
+        for which_color, time_ind in enumerate(plotted_time_inds):
+            axes[i,1].plot(x, get_denormed_sig_from_state(predicted_means[time_ind], profile), c=colors[which_color],
+                           label=f'{times[time_ind]}ms')
+            axes[i,1].plot(x, get_denormed_sig_from_state(x_test[sample_ind][time_ind], profile),
+                           linestyle='--', c=colors[which_color])
+    for i,actuator in enumerate(plotted_actuators):
+        axes[i,2].plot(times, [get_denormed_sig_from_state(state, actuator) for state in x_test[sample_ind]],
+                       label='real', c='k', linestyle='--')
+        axes[i,2].set_ylabel(label_map[actuator])
+    for i,parameter in enumerate(plotted_parameters):
+        axes[i,3].plot(times, [get_denormed_sig_from_state(state, parameter) for state in predicted_means],
+                       label='predicted', c='k')
+        axes[i,3].plot(times, [get_denormed_sig_from_state(state, parameter) for state in x_test[sample_ind]],
+                       label='real', c='k', linestyle='--')
+        axes[i,3].set_ylabel(label_map[parameter])
+axes[0,1].legend()
+axes[0,0].legend()
+fig.suptitle(f'Shot {shot}')
 plt.show()
-# def get_denormed_sig(sig):
-#     ind=state_inds[sig]
-#     if sig in profiles:
-#         tmp=step_state[ind:ind+dataSettings.nx]
-#     elif sig in parameters+actuators:
-#         tmp=step_state[ind]
-#     return dataSettings.denormalize(tmp, sig)
-# for i,profile in enumerate(plotted_profiles):
-#     profile_ind=state_inds[profile]
-#     if step==0:
-#         axes[i,0].plot(x, get_denormed_sig(profile),
-#                        c=colors[step])
-#         axes[i,0].set_ylabel(label_map[profile])
-#         axes[i,1].set_ylabel(rf"{label_map[profile]}($\rho=0$)")
-#     axes[i,1].scatter(time, get_denormed_sig(profile)[rho_ind],
-#                       c=colors[step+1], linestyle='--',marker='o') #,markersize=4)
-    # axes[i,1].errorbar(time, predicted_mean[profile_ind][rho_ind],
-    #                    predicted_std[profile_ind][rho_ind],
-    #                    c=colors[step+1], marker='o')
-    # for j in range(5):
-    #     axes[i,1].scatter(actuator_times[-1],
-    #                       all_predictions_denormed[j][profile_ind][rho_ind],
-    #                       color=colors[step+1], marker='o')
-#     if step%PLOT_STEP==0:
-#         axes[i,0].plot(x,get_denormed_sig(-1, profile_ind, profile),
-#                        c=colors[step+1],label=f'{shot}.{time}',linestyle='--')
-#         axes[i,0].errorbar(x,
-#                            predicted_mean[profile_ind],
-#                            #yerr=predicted_std[i],
-#                            c=colors[step+1])
-# for i,actuator in enumerate(plotted_actuators):
-#     actuator_ind=saved_state['actuators'].index(actuator)
-#     axes[i,2].plot(actuator_times,
-#                    dataSettings.denormalize(actuators_tensor[0,-(lookahead+1):,actuator_ind].detach().numpy(), actuator),
-#                    c=colors[step+1],marker='o',markersize=4)
-#     axes[i,2].set_ylabel(label_map[actuator])
-# axes[-1,0].set_xlabel(r'$\rho$')
-# axes[-1,1].set_xlabel('time (ms)')
-# axes[-1,2].set_xlabel('time (ms)')
-# axes[0,0].legend()
-# for ax in np.ndarray.flatten(axes):
-#     ax.axhline(0,linestyle='--',c='k')
-# plt.show()
-#     times.append(recorded_times.detach().numpy())
-#     profiles_numpy=profiles_tensor.detach().numpy()
-#     output_label=None
-#     prediction_label=None
-#     normed_prev_step=model(profiles_tensor, actuators_tensor, parameters_tensor).detach()
-#     axes[0,i].set_ylabel(profile)
-#     axes[0,i].set_xlim(0,1)
-#     if 'qpsi' in profile:
-#         axes[0,i].set_ylim(0.5,5)
-#     if 'etempfit' in profile or 'edensfit' in profile or 'itempfit' in profile or 'pres_' in profile:
-#         axes[0,i].set_ylim(0,None)
-# axes[0,0].legend()
-# for i,actuator in enumerate(saved_state['actuators']):
-#     axes[1,i].plot(times,actuators_numpy[batch_ind,:,i])
-#     axes[1,i].set_ylabel(actuator)
-#     axes[1,i].axvline(present_time,c='k',linestyle='--')
-
-
-'''
-with torch.no_grad():
-    val_losses.append(0)
-    for *model_inputs, _ in val_loader:
-        for i in range(len(model_inputs)):
-            model_inputs[i]=model_inputs[i].to(device)
-        model_output = model(*model_inputs)
-        val_loss = loss_fn(model_output,
-                           *model_inputs,
-                           profiles, actuators, parameters)
-        val_losses[-1]+=val_loss.item()*len(model_inputs[0]) # mean * # samples in batch
-'''
-'''
-with torch.no_grad():
-    val_losses.append(0)
-    for *model_inputs, _ in val_loader:
-        for i in range(len(model_inputs)):
-            model_inputs[i]=model_inputs[i].to(device)
-        model_output = model(*model_inputs)
-        val_loss = loss_fn(model_output,
-                           *model_inputs,
-                           profiles, actuators, parameters)
-        val_losses[-1]+=val_loss.item()*len(model_inputs[0]) # mean * # samples in batch
-    val_losses[-1]/=len(val_dataset)
-'''

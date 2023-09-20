@@ -3,7 +3,7 @@ import numpy as np
 # number of x points in profile data
 nx=33
 # timestep in dataset, in seconds
-DT=0.025
+DT=0.02
 
 # No normalization for qpsi! Instead, code normalizes/denormalizes w/ inverse
 #   i.e. by transforming to iota = 1/q (mean & std for q would be ignored)

@@ -72,9 +72,9 @@ loss_fn=torch.nn.MSELoss(reduction='sum')
 
 train_losses=[]
 val_losses=[]
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
+#scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
 
 print('Training...')
 if torch.cuda.is_available():
@@ -137,7 +137,7 @@ for epoch in range(n_epochs):
         train_loss.backward()
         optimizer.step()
         train_losses.append(train_loss.item())
-    scheduler.step()
+    #scheduler.step()
     avg_train_losses.append(sum(train_losses)/len(train_losses)) # now divide by total number of samples to get mean over steps/batches
     model.eval()
     val_losses=[]
@@ -164,7 +164,7 @@ for epoch in range(n_epochs):
             'val_indices': val_indices,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
+            #'scheduler_state_dict': scheduler.state_dict(),
             'train_losses': avg_train_losses,
             'val_losses': avg_val_losses,
             'profiles': profiles,
