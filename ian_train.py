@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset
-from customModels import IanRNN, IanMLP
+from customModels import IanRNN, IanMLP, HiroLinear
 
 from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
 
@@ -10,7 +10,7 @@ import os
 import sys
 import time
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLinear': HiroLinear}
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
@@ -27,6 +27,8 @@ lr=float(config['optimization']['lr'])
 lr_gamma=float(config['optimization']['lr_gamma'])
 lr_stop_epoch=int(config['optimization']['lr_stop_epoch'])
 early_saving=bool(config['optimization']['early_saving'])
+l1_lambda=float(config['optimization']['l1_lambda'])
+l2_lambda=float(config['optimization']['l2_lambda'])
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
@@ -80,12 +82,20 @@ print('Training...')
 if torch.cuda.is_available():
     device='cuda'
     if torch.cuda.device_count() > 1:
-      model = torch.nn.DataParallel(model)
+        model = torch.nn.DataParallel(model)
     print(f"Using {torch.cuda.device_count()} GPU(s)")
 else:
     device = 'cpu'
     print("Using CPU")
 model.to(device)
+param_size = 0
+for param in model.parameters():
+    param_size += param.nelement() * param.element_size()
+buffer_size = 0
+for buffer in model.buffers():
+    buffer_size += buffer.nelement() * buffer.element_size()
+size_all_mb = (param_size + buffer_size) / 1024**2
+print('model size: {:.3f}MB'.format(size_all_mb))
 start_time=time.time()
 prev_time=start_time
 
@@ -133,6 +143,18 @@ for epoch in range(n_epochs):
         train_loss=masked_loss(loss_fn,
                                model_output, padded_y,
                                length_bucket)
+        # L1 regularization
+        '''l1_reg = torch.tensor(0.0, device=device)
+        for param in model.parameters():
+            l1_reg += torch.abs(param).sum()
+        train_loss += l1_lambda*l1_reg # lambda is the hyperparameter defined in cfg
+
+        # L2 regularization
+        l2_reg = torch.tensor(0.0, device=device)
+        for param in model.parameters():
+            l2_reg += torch.norm(param, p=2).sum()
+        train_loss += l2_lambda * l2_reg'''
+
         # Backpropagation
         train_loss.backward()
         optimizer.step()
