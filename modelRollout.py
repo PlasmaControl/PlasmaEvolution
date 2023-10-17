@@ -14,14 +14,15 @@ import dataSettings
 import numpy as np
 import os
 import glob
-
-from customModels import IanRNN, IanMLP
+import sys
+from customModels import IanRNN, IanMLP, HiroLinear
 
 plotted_profiles=['zipfit_itempfit_rho','zipfit_edensfit_rho', 'zipfit_etempfit_rho', 'zipfit_trotfit_rho', 'qpsi_EFIT01'] #'zipfit_etempfit_rho'
 plotted_actuators=['pinj','tinj','ipsiptargt','dssdenest','ip']
-plotted_parameters=['li_EFIT01', 'tribot_EFIT01', 'tritop_EFIT01', 'dssdenest', 'kappa_EFIT01', 'volume_EFIT01']
+#plotted_parameters=['li_EFIT01', 'tribot_EFIT01', 'tritop_EFIT01', 'dssdenest', 'kappa_EFIT01', 'volume_EFIT01']
+plotted_parameters=[]
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLinear': HiroLinear}
 #PRE_STEPS=78
 #test_shots=[187070]
 
@@ -41,18 +42,21 @@ label_map={'zipfit_etempfit_rho': r'$T_e$',
            'ipsiptargt': r'$I_p^{target}$',
            'dssdenest': r'$<n_e>$'}
 
-model_dir='test_models'
+if (len(sys.argv)-1) > 0:
+    output_filename_base=sys.argv[1]
+else:
+    output_filename_base='IanRNN'
+output_dir='/projects/EKOLEMEN/profile_predictor/joe_hiro_models/'
 #saved_state=torch.load('test_models/IanRNN.tar', map_location=torch.device('cpu'))
 config=configparser.ConfigParser()
-config.read(os.path.join(model_dir,'config2'))
-
+config.read(os.path.join(output_dir,f'{output_filename_base}config0'))
+#output_dir=config['model']['output_dir']
 model_type=config['model']['model_type']
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
 
-#data_filename=config['preprocess']['preprocessed_data_filenamebase']+'test.pkl'
-data_filename='preprocessed_data_lowip_test.pkl'
+data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 
 x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,actuators,parameters,sort_by_size=True)
 
@@ -77,10 +81,10 @@ nrows=max(len(plotted_profiles),len(plotted_actuators))
 @torch.no_grad()
 class ModelStepper:
     # max_loss determine by e.g. running modelStats.py to see loss over time
-    def __init__(self, initial_state, model_dir=model_dir, model_type=model_type, max_loss=1.0):
+    def __init__(self, initial_state, output_dir=output_dir, model_type=model_type, max_loss=0.01):
         self.models=[]
         num_model_options=0
-        for input_filename in glob.glob(os.path.join(model_dir, f'{model_type}*.tar')):
+        for input_filename in glob.glob(os.path.join(output_dir, f'{output_filename_base}*.tar')):
             saved_state=torch.load(input_filename, map_location=torch.device('cpu'))
             num_model_options+=1
             if saved_state['val_losses'][-1]<max_loss:
@@ -142,8 +146,8 @@ for step in range(time_length): #NSTEPS): # loop over predicted timesteps
 
 times=np.arange(start_time, start_time+time_length*int(dataSettings.DT*1e3), int(dataSettings.DT*1e3))
 rho_ind=10
-fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),4, sharex='col')
-
+fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),4, sharex='col', figsize=(15,15))
+plt.subplots_adjust(hspace=0.5, wspace=0.5)
 NSTEPS_PLOTTED=4
 colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
 plotted_time_inds=[int(t) for t in np.linspace(0, len(predicted_means), NSTEPS_PLOTTED, endpoint=False)]
@@ -172,4 +176,5 @@ with torch.no_grad():
 axes[0,1].legend()
 axes[0,0].legend()
 fig.suptitle(f'Shot {shot}')
+plt.savefig(f'{output_filename_base}_plots.svg', format='svg')
 plt.show()

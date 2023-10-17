@@ -1,23 +1,32 @@
 import matplotlib.pyplot as plt
-
+import sys
+import os
+import configparser
 import torch
 #torch.manual_seed(0)
 from torch.utils.data import DataLoader
 import customModels
 import customLosses
 import customDatasetMakers
+import glob
 
-for i in range(50):
-    input_filename=f'models2lookahead/PlasmaConv2D{i}.tar'
-    saved_state=torch.load(input_filename, map_location=torch.device('cpu'))
-    plt.plot(saved_state['train_losses'],c='r',label='train')
-    plt.plot(saved_state['val_losses'],c='b',label='validation')
-    plt.text(len(saved_state['val_losses']), saved_state['val_losses'][-1], str(i))
-    if i==0:
-        plt.legend()
+if (len(sys.argv)-1) > 0:
+    model_name=sys.argv[1]
+else:
+    model_name='IanRNN0'
+output_dir='/projects/EKOLEMEN/profile_predictor/joe_hiro_models/'
+model=os.path.join(output_dir,f'{model_name}.tar')
+saved_state=torch.load(model, map_location=torch.device('cpu'))
+plt.plot(saved_state['train_losses'],c='r',label='train')
+plt.plot(saved_state['val_losses'],c='b',label='validation')
+#plt.text(len(saved_state['val_losses']), saved_state['val_losses'][-1], str(i))
+plt.legend()
 plt.ylabel('loss')
 plt.xlabel('epoch')
+plt.title(f'{model_name}')
+plt.savefig(f'{model_name}_stats.svg', format='svg')
 plt.show()
+
 #model=customModels.PlasmaConv2D(saved_state['profiles'], saved_state['actuators'], saved_state['parameters'])
 #model.load_state_dict(saved_state['model_state_dict'])
 
