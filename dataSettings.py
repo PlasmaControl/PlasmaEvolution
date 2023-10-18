@@ -69,16 +69,45 @@ IMPURITY_FRACTION=0.04
 IMPURITY_Z=6
 KEV_PER_1019_TO_J=1.602e3
 
-def normalize(arr, sig_name):
-    # q blows up at the edge, use iota = 1/q as proxy for q and don't use ad hoc normalization
-    if 'qpsi' in sig_name:
-        normed_arr = 1. / arr
-    else:
-        normed_arr = (arr - normalizations[sig_name]['mean']) / normalizations[sig_name]['std']
-    return normed_arr
-def denormalize(arr, sig_name):
-    if 'qpsi' in sig_name:
-        denormed_arr = 1. / arr
-    else:
-        denormed_arr = (arr * normalizations[sig_name]['std']) + normalizations[sig_name]['mean']
-    return denormed_arr
+# actuators is [] since the output state only has profiles and parameters,
+# but the input state has actuators at t and t+1 also
+def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
+    #state_arrs=torch.atleast_2d(state_arrs)
+    dic={sig: None for sig in profiles+parameters}
+    ind,next_ind=0,0
+    for profile in profiles:
+        next_ind=ind+nx
+        dic[profile]=[state_arr[ind:next_ind] for state_arr in state_arrs]
+        ind=next_ind
+    for parameter in parameters:
+        dic[parameter]=[state_arr[ind] for state_arr in state_arrs]
+        ind=ind+1
+    for actuator in actuators:
+        dic[actuator]=[state_arr[ind] for state_arr in state_arrs]
+        ind=ind+1
+    # in future could also return the next step values for actuators
+    return dic
+
+def get_normalized_dic(denormed_dic, excluded_sigs=[]):
+    normalized_dic={}
+    for sig in denormed_dic:
+        if sig not in excluded_sigs:
+            if 'qpsi' in sig:
+                normalized_dic[sig] = 1. / denormed_dic[sig]
+            else:
+                normalized_dic[sig] = (denormed_dic[sig] - normalizations[sig]['mean']) / normalizations[sig]['std']
+        else:
+            normalized_dic[sig] = denormed_dic[sig]
+    return normalized_dic
+
+def get_denormalized_dic(normed_dic, excluded_sigs=[]):
+    denormalized_dic={}
+    for sig in normed_dic:
+        if sig not in excluded_sigs:
+            if 'qpsi' in sig:
+                denormalized_dic[sig] = 1. / normed_dic[sig]
+            else:
+                denormalized_dic[sig] = (normed_dic[sig] * normalizations[sig]['std']) + normalizations[sig]['mean']
+        else:
+            denormalized_dic[sig] = normed_dic[sig]
+    return denormalized_dic

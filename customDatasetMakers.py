@@ -42,8 +42,9 @@ def preprocess_data(processed_data_filename,
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
         SHOTS_PER_PRINT = 1000
         for nshot,shot in enumerate(used_shots):
+            normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
             if (shot in f) and np.all([key in f[shot].keys() for key in profiles+scalars]) \
-               and np.all([allTimesInBounds(dataSettings.normalize(f[shot][key][:],key),dataSettings.deviation_cutoff) for key in profiles+scalars]) \
+               and np.all([allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff) for key in profiles+scalars]) \
                and not (exclude_ech and ('ech_pwr_total' in f[shot]) and np.sum(f[shot]['ech_pwr_total'][:])) \
                and not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs)):
                 shot_included=False
@@ -99,8 +100,10 @@ def ian_dataset(processed_data_filename,
     with open(processed_data_filename, 'rb') as f:
         processed_data=pickle.load(f)
     # normalize
-    for sig in profiles + parameters + actuators:
-        processed_data[sig]=dataSettings.normalize(processed_data[sig], sig)
+    print(processed_data.keys())
+    processed_data=dataSettings.get_normalized_dic(processed_data, excluded_sigs=['shotnum', 'times'])
+    # for sig in profiles + parameters + actuators:
+    #     processed_data[sig]=dataSettings.normalize(processed_data[sig], sig)
     in_sample,in_sample,out_sample,out_sample,shots,times=[],[],[],[],[],[]
     in_samples,out_samples=[],[]
     previous_processed_sample_ind, processed_sample_ind=0,0

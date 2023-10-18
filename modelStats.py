@@ -4,27 +4,41 @@ import os
 import configparser
 import torch
 #torch.manual_seed(0)
-from torch.utils.data import DataLoader
 import customModels
 import customLosses
 import customDatasetMakers
 import glob
 
+plot_ensemble=False
+
 if (len(sys.argv)-1) > 0:
-    model_name=sys.argv[1]
+    config_filename=sys.argv[1]
 else:
-    model_name='IanRNN0'
-output_dir='/projects/EKOLEMEN/profile_predictor/joe_hiro_models/'
-model=os.path.join(output_dir,f'{model_name}.tar')
-saved_state=torch.load(model, map_location=torch.device('cpu'))
-plt.plot(saved_state['train_losses'],c='r',label='train')
-plt.plot(saved_state['val_losses'],c='b',label='validation')
-#plt.text(len(saved_state['val_losses']), saved_state['val_losses'][-1], str(i))
-plt.legend()
+    config_filename=f'configs/default.cfg'
+config=configparser.ConfigParser()
+config.read(config_filename)
+output_filename_base=config['model']['output_filename_base']
+output_dir=config['model']['output_dir']
+
+if plot_ensemble:
+    all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}*.tar'))
+else:
+    all_model_files=[os.path.join(output_dir, f'{output_filename_base}.tar')]
+
+for model_ind, input_filename in enumerate(all_model_files):
+    model=os.path.join(input_filename)
+    saved_state=torch.load(model, map_location=torch.device('cpu'))
+    plt.plot(saved_state['train_losses'],c='r',label='train')
+    plt.plot(saved_state['val_losses'],c='b',label='validation')
+    if plot_ensemble:
+        plt.text(len(saved_state['val_losses'])-1, saved_state['val_losses'][-1], os.path.basename(input_filename))
+    if model_ind==0:
+        plt.legend()
 plt.ylabel('loss')
 plt.xlabel('epoch')
-plt.title(f'{model_name}')
-plt.savefig(f'{model_name}_stats.svg', format='svg')
+if not plot_ensemble:
+    plt.title(f'{output_filename_base}')
+plt.savefig(f'{output_filename_base}_stats.svg', format='svg')
 plt.show()
 
 #model=customModels.PlasmaConv2D(saved_state['profiles'], saved_state['actuators'], saved_state['parameters'])
