@@ -112,6 +112,8 @@ def make_bucket(arrays, bucket_size):
             buckets.append(current_bucket)
             current_bucket=[]
             current_len=0
+    if len(current_bucket)>0:
+        buckets.append(current_bucket)
     return buckets
 
 train_x_buckets = make_bucket(x_train, bucket_size)
