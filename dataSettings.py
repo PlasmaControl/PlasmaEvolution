@@ -88,6 +88,7 @@ def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
     # in future could also return the next step values for actuators
     return dic
 
+# excluded_sigs for e.g. shotnum and times from preprocessed data
 def get_normalized_dic(denormed_dic, excluded_sigs=[]):
     normalized_dic={}
     for sig in denormed_dic:

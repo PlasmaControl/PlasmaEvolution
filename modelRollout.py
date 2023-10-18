@@ -60,7 +60,7 @@ actuator_length=len(actuators)
 data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 
 if plot_ensemble:
-    max_loss=10
+    max_loss=0.01
     considered_models=[]
     all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}*.tar'))
     for model_file in all_model_files:

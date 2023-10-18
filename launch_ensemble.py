@@ -1,15 +1,17 @@
 import os
 import configparser
-
+import shutil
 submit_runs=True
 
 root_dir=os.path.expanduser('~/PlasmaEvolution')
 baseconfig_filename='configs/default.cfg'
-
 config=configparser.ConfigParser()
 config.read(baseconfig_filename)
 output_dir=config['model']['output_dir']
 output_filename_base=config['model']['output_filename_base']
+
+#keep copy of config file without ensemble_number for testing
+shutil.copyfile(baseconfig_filename, os.path.join(output_dir,f'{output_filename_base}config'))
 for ensemble_number in range(10):
     config_filename=os.path.join(output_dir,f'{output_filename_base}config{ensemble_number}')
     config['model']['output_filename_base']=output_filename_base+str(ensemble_number)

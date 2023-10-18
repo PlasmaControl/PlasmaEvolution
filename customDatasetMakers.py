@@ -100,7 +100,6 @@ def ian_dataset(processed_data_filename,
     with open(processed_data_filename, 'rb') as f:
         processed_data=pickle.load(f)
     # normalize
-    print(processed_data.keys())
     processed_data=dataSettings.get_normalized_dic(processed_data, excluded_sigs=['shotnum', 'times'])
     # for sig in profiles + parameters + actuators:
     #     processed_data[sig]=dataSettings.normalize(processed_data[sig], sig)
