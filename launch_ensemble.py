@@ -15,13 +15,14 @@ for ensemble_number in range(10):
     config['model']['output_filename_base']=output_filename_base+str(ensemble_number)
     with open(config_filename,'w') as f:
         config.write(f)
+    log_filename=os.path.join(output_dir,f'{output_filename_base}log{ensemble_number}.out')
     slurm_text=f'''#!/bin/bash 
 
 #SBATCH -N 1 
 #SBATCH -c 32
 #SBATCH --mem 48G
 #SBATCH -G 1
-#SBATCH -o {output_dir}/log{ensemble_number}.out
+#SBATCH -o {log_filename}
 #SBATCH -t 05:00:00
 
 root_dir={root_dir}
