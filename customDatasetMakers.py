@@ -42,8 +42,11 @@ def preprocess_data(processed_data_filename,
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
         SHOTS_PER_PRINT = 1000
         for nshot,shot in enumerate(used_shots):
-            normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
-            if (shot in f) and np.all([key in f[shot].keys() for key in profiles+scalars]) \
+            keys_exist=False
+            if np.all([key in f[shot].keys() for key in profiles+scalars]):
+                normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
+                keys_exist=True
+            if keys_exist \
                and np.all([allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff) for key in profiles+scalars]) \
                and not (exclude_ech and ('ech_pwr_total' in f[shot]) and np.sum(f[shot]['ech_pwr_total'][:])) \
                and not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs)):
