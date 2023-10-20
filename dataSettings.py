@@ -1,10 +1,11 @@
 import numpy as np
-
+import scipy.constants as sc
+import copy
 # number of x points in profile data
 nx=33
 # timestep in dataset, in seconds
 DT=0.02
-
+use_gyroBohm = False
 # No normalization for qpsi! Instead, code normalizes/denormalizes w/ inverse
 #   i.e. by transforming to iota = 1/q (mean & std for q would be ignored)
 normalizations={
@@ -44,9 +45,9 @@ normalizations={
 # exclude the shot from the dataset
 deviation_cutoff=10
 
-#min_shot=180000
+#min_shot=170000
 min_shot=140888
-#max_shot=180100
+#max_shot=171000
 max_shot=200000
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
@@ -88,6 +89,40 @@ def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
     # in future could also return the next step values for actuators
     return dic
 
+def get_gyro_normalized_dic(input_dic):
+    output_dic = copy.copy(input_dic)
+    Te = input_dic['zipfit_etempfit_rho']
+    Ti = np.abs(input_dic['zipfit_itempfit_rho']) # abs because there are some -ve values, and we're square rooting. Might be problematic
+    ne = input_dic['zipfit_edensfit_rho']
+    Bt = np.abs(input_dic['bt'][0][0])
+    a = 0.67
+    temp_frac = Te/Ti
+    #rho_star = sc.c * (2*sc.m_p)**(1/2) * np.sqrt(Ti) / (sc.e * a * Bt)
+    #beta = 16 * sc.pi * ne * Te / Bt**2
+    rho_star = np.sqrt(Ti) / (a * Bt) # removed physical constants to get values order 1
+    beta = ne * Te / Bt**2
+    output_dic['zipfit_etempfit_rho']=temp_frac
+    output_dic['zipfit_itempfit_rho']=rho_star
+    output_dic['zipfit_edensfit_rho']=beta
+    return output_dic
+
+def get_gyro_denormalized_dic(input_dic):
+    output_dic = copy.copy(input_dic)
+    temp_frac = input_dic['zipfit_etempfit_rho']
+    rho_star = input_dic['zipfit_itempfit_rho']
+    beta = input_dic['zipfit_edensfit_rho']
+    Bt = np.abs(input_dic['bt'][0][0])
+    a = 0.67
+    Te = temp_frac * Ti
+    #Ti = (sc.e * a * Bt * rho_star / (sc.c * (2*sc.m_p)**(1/2)) )**2
+    #ne = beta * Bt**2 / (16 * sc.pi * Te)
+    Ti = (a * Bt * rho_star)**2
+    ne = beta * Bt**2 / Te
+    output_dic['zipfit_etempfit_rho']=Te
+    output_dic['zipfit_itempfit_rho']=Ti
+    output_dic['zipfit_edensfit_rho']=ne
+    return output_dic
+
 # excluded_sigs for e.g. shotnum and times from preprocessed data
 def get_normalized_dic(denormed_dic, excluded_sigs=[]):
     normalized_dic={}
@@ -99,6 +134,8 @@ def get_normalized_dic(denormed_dic, excluded_sigs=[]):
                 normalized_dic[sig] = (denormed_dic[sig] - normalizations[sig]['mean']) / normalizations[sig]['std']
         else:
             normalized_dic[sig] = denormed_dic[sig]
+    if use_gyroBohm:
+        normalized_dic=get_gyro_normalized_dic(normalized_dic)
     return normalized_dic
 
 def get_denormalized_dic(normed_dic, excluded_sigs=[]):
@@ -111,4 +148,6 @@ def get_denormalized_dic(normed_dic, excluded_sigs=[]):
                 denormalized_dic[sig] = (normed_dic[sig] * normalizations[sig]['std']) + normalizations[sig]['mean']
         else:
             denormalized_dic[sig] = normed_dic[sig]
+    if use_gyroBohm:
+        denormalized_dic=get_gyro_denormalized_dic(denormalized_dic)
     return denormalized_dic
