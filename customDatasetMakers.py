@@ -6,6 +6,8 @@ import torch
 
 import dataSettings
 
+verbose=False
+
 def profiles_ok(profiles):
     if np.isnan(profiles).any():
         return False
@@ -19,12 +21,15 @@ def scalars_ok(scalars):
     return True
 def allTimesInBounds(arr, cutoff):
     return np.all(np.abs(arr[~np.isnan(arr)])<cutoff)
+def check_signal_off(signal, threshold=0.1):
+    return (np.all(np.isnan(signal)) or np.nanmax(signal)<threshold)
 
 def preprocess_data(processed_data_filename,
                     raw_data_filename,profiles,scalars,
                     shots=None,lookahead=1,
                     ip_minimum=None,ip_maximum=None,
-                    excluded_runs=[],exclude_ech=True, max_num_shots=np.inf):
+                    excluded_runs=[],exclude_ech=True, exclude_ich=True,
+                    max_num_shots=np.inf):
     print(f'Building dataset {processed_data_filename}...')
     start_time=time.time()
     with h5py.File(raw_data_filename,'r') as f:
@@ -42,11 +47,36 @@ def preprocess_data(processed_data_filename,
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
         SHOTS_PER_PRINT = 1000
         for nshot,shot in enumerate(used_shots):
-            normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
-            if (shot in f) and np.all([key in f[shot].keys() for key in profiles+scalars]) \
-               and np.all([allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff) for key in profiles+scalars]) \
-               and not (exclude_ech and ('ech_pwr_total' in f[shot]) and np.sum(f[shot]['ech_pwr_total'][:])) \
-               and not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs)):
+            if verbose:
+                print(shot)
+            keys_exist=False
+            if np.all([key in f[shot].keys() for key in profiles+scalars]):
+                normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
+                keys_exist=True
+            if keys_exist:
+                within_deviation=np.all([allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff) for key in profiles+scalars])
+                ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and check_signal_off(f[shot]['ech_pwr_total'][:], threshold=0.1))
+                ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
+                run_ok=not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
+                if verbose:
+                    if not within_deviation:
+                        print(f'not within deviation_cutoff')
+                        print({key: allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff) for key in profiles+scalars})
+                    if not ech_ok:
+                        print(f"ech sum: {np.sum(f[shot]['ech_pwr_total'][:])}")
+                    if not ich_ok:
+                        print(f"ich sum: {np.sum(f[shot]['ich_pwr_total'][:])}")
+                    if not run_ok:
+                        print(f'run in excluded_runs')
+            elif verbose:
+                print('missing key(s):')
+                for key in profiles+scalars:
+                    if not key in f[shot].keys():
+                        print(key)
+            if keys_exist \
+               and within_deviation \
+               and ech_ok \
+               and run_ok:
                 shot_included=False
                 for t_ind in range(len(times)-lookahead):
                     total_timestep_count+=1
@@ -54,12 +84,16 @@ def preprocess_data(processed_data_filename,
                     if (ip_minimum is not None) or (ip_maximum is not None):
                         if 'ip' not in f[shot].keys():
                             ip_in_bounds=False
+                            if verbose:
+                                print('ip not in file')
                         else:
                             ip_window=f[shot]['ip'][t_ind:t_ind+lookahead+1]
                             if ip_minimum is not None:
                                 ip_in_bounds=ip_in_bounds and np.all(ip_window>ip_minimum)
                             if ip_maximum is not None:
                                 ip_in_bounds=ip_in_bounds and np.all(ip_window<ip_maximum)
+                            if not ip_in_bounds and verbose:
+                                print(f'ip out of bounds for timestep ({ip_window})')
                     if ip_in_bounds:
                         tmp_profiles_arr={}
                         tmp_scalars_arr={}
@@ -77,6 +111,15 @@ def preprocess_data(processed_data_filename,
                             processed_data['times'].append(times[t_ind:t_ind+lookahead+1])
                             included_timestep_count+=1
                             shot_included=True
+                        elif verbose:
+                            print('not all profiles and scalars ok for timestep')
+                            for profile in profiles:
+                                if not profiles_ok(tmp_profiles_arr[profile]):
+                                    print(f"{profile}: {tmp_profiles_arr[profile]}")
+                            for scalar in scalars:
+                                if not scalars_ok(tmp_scalars_arr[scalar]):
+                                    print(f"{scalar}: {tmp_scalars_arr[scalar]}")
+                            print(f"{profiles_ok(tmp_profiles) for tmp_profiles in tmp_profiles_arr.values()}")
                 if shot_included:
                     included_shot_count+=1
             if not (nshot+1) % SHOTS_PER_PRINT:
@@ -101,8 +144,6 @@ def ian_dataset(processed_data_filename,
         processed_data=pickle.load(f)
     # normalize
     processed_data=dataSettings.get_normalized_dic(processed_data, excluded_sigs=['shotnum', 'times'])
-    # for sig in profiles + parameters + actuators:
-    #     processed_data[sig]=dataSettings.normalize(processed_data[sig], sig)
     in_sample,in_sample,out_sample,out_sample,shots,times=[],[],[],[],[],[]
     in_samples,out_samples=[],[]
     previous_processed_sample_ind, processed_sample_ind=0,0
