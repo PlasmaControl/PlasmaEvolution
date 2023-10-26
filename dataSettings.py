@@ -1,11 +1,12 @@
 import numpy as np
-import scipy.constants as sc
 import copy
+
 # number of x points in profile data
 nx=33
 # timestep in dataset, in seconds
 DT=0.02
 use_gyroBohm = False
+
 # No normalization for qpsi! Instead, code normalizes/denormalizes w/ inverse
 #   i.e. by transforming to iota = 1/q (mean & std for q would be ignored)
 normalizations={
@@ -49,9 +50,7 @@ if use_gyroBohm:
 # exclude the shot from the dataset
 deviation_cutoff=10
 
-#min_shot=170000
 min_shot=140888
-#max_shot=171000
 max_shot=200000
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
@@ -59,10 +58,6 @@ test_indices=[0]
 train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in val_indices+test_indices]
 val_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in val_indices]
 test_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in test_indices]
-
-#train_shots=[163303, 170047, 170048]
-#val_shots=[]
-#test_shots=[]
 
 # ohmic power in Watts, to add to Pinj to get power for taue calculation
 ohmicPower=5e5
