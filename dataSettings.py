@@ -41,7 +41,7 @@ normalizations={
     'epedHeightForNe3': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe5': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe7': {'mean': 0, 'std': 5e-3},
-    'D_tot': {'mean': 0, 'std': 1e3}
+    'D_tot': {'mean': 0, 'std': 1e2}
     }
 if use_gyroBohm:
     normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 1}
@@ -51,8 +51,8 @@ if use_gyroBohm:
 # exclude the shot from the dataset
 deviation_cutoff=10
 
-min_shot=140888
-max_shot=200000
+min_shot=0
+max_shot=2000000
 
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
