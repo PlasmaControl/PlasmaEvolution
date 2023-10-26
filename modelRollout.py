@@ -58,6 +58,7 @@ state_length=len(profiles)*dataSettings.nx+len(parameters)
 actuator_length=len(actuators)
 
 data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
+#data_filename='/projects/EKOLEMEN/profile_predictor/joe_hiro_models/preprocessed_data_highip_val.pkl'
 
 if plot_ensemble:
     max_loss=0.01
@@ -142,11 +143,14 @@ for step in range(time_length): #NSTEPS): # loop over predicted timesteps
     for sig in plotted_profiles+plotted_parameters:
         predicted_means[sig][step, :]=torch.mean(denormed_predictions[sig], dim=0)
         predicted_stds[sig][step, :]=torch.std(denormed_predictions[sig], dim=0)
-
 times=np.arange(start_time, start_time+time_length*int(dataSettings.DT*1e3), int(dataSettings.DT*1e3))
+
 rho_ind=10
-fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),4, sharex='col', figsize=(15,15))
-plt.subplots_adjust(hspace=0.5, wspace=0.5)
+num_columns = 3
+if len(plotted_parameters)>0:
+    num_columns = 4
+fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),num_columns, sharex='col', figsize=(8,5))
+plt.subplots_adjust(hspace=0, wspace=1)
 NSTEPS_PLOTTED=4
 colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
 plotted_time_inds=[int(t) for t in np.linspace(0, time_length, NSTEPS_PLOTTED, endpoint=False)]
@@ -171,14 +175,15 @@ with torch.no_grad():
         axes[i,2].plot(times, denormalized_true_dic[actuator],
                        label='real', c='k', linestyle='--')
         axes[i,2].set_ylabel(label_map[actuator])
-    for i,parameter in enumerate(plotted_parameters):
-        axes[i,3].errorbar(times, predicted_means[parameter][:, 0], yerr=predicted_stds[parameter][:, 0],
-                       label='predicted', c='k', alpha=0.1)
-        axes[i,3].plot(times, denormalized_true_dic[parameter],
-                       label='real', c='k', linestyle='--')
-        axes[i,3].set_ylabel(label_map[parameter])
-axes[0,1].legend()
-axes[0,0].legend()
+    if len(plotted_parameters)>0:
+        for i,parameter in enumerate(plotted_parameters):
+            axes[i,3].errorbar(times, predicted_means[parameter][:, 0], yerr=predicted_stds[parameter][:, 0],
+                           label='predicted', c='k', alpha=0.1)
+            axes[i,3].plot(times, denormalized_true_dic[parameter],
+                           label='real', c='k', linestyle='--')
+            axes[i,3].set_ylabel(label_map[parameter])
+axes[0,1].legend(fontsize=8)
+axes[0,0].legend(fontsize=8)
 fig.suptitle(f'Shot {shot}')
-plt.savefig(f'{output_filename_base}_plots.svg', format='svg')
+plt.savefig(f'{output_filename_base}_plots{sample_ind}.svg', format='svg')
 plt.show()

@@ -1,9 +1,11 @@
 import numpy as np
+import copy
 
 # number of x points in profile data
 nx=33
 # timestep in dataset, in seconds
 DT=0.02
+use_gyroBohm = False
 
 # No normalization for qpsi! Instead, code normalizes/denormalizes w/ inverse
 #   i.e. by transforming to iota = 1/q (mean & std for q would be ignored)
@@ -40,13 +42,15 @@ normalizations={
     'epedHeightForNe5': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe7': {'mean': 0, 'std': 5e-3}
     }
+if use_gyroBohm:
+    normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 1}
+    normalizations['zipfit_etempfit_rho'] = {'mean': 0, 'std': 5e-1}
+    normalizations['zipfit_itempfit_rho'] = {'mean': 0, 'std': 1}
 # if average normalized data for shot greater than this many deviations away,
 # exclude the shot from the dataset
 deviation_cutoff=10
 
-#min_shot=180000
 min_shot=140888
-#max_shot=180100
 max_shot=200000
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
@@ -88,8 +92,42 @@ def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
     # in future could also return the next step values for actuators
     return dic
 
+def get_gyro_normalized_dic(input_dic):
+    output_dic = copy.copy(input_dic)
+    Te = np.clip(input_dic['zipfit_etempfit_rho'], 0.01, None)
+    Ti = np.clip(input_dic['zipfit_itempfit_rho'], 0.01, None)
+    ne = np.clip(input_dic['zipfit_edensfit_rho'], 0.01, None)
+    Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(Te[0][0]), axis=2)) # make Bt flat radial profile
+    a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(Te[0][0]), axis=2) # make a flat radial profile
+    temp_frac = Te/Ti
+    rho_star = np.sqrt(Ti) / (a * Bt)
+    beta = ne * Te / Bt**2
+    output_dic['zipfit_etempfit_rho']=temp_frac
+    output_dic['zipfit_itempfit_rho']=rho_star
+    output_dic['zipfit_edensfit_rho']=beta
+    return output_dic
+
+def get_gyro_denormalized_dic(input_dic):
+    output_dic = copy.copy(input_dic)
+    temp_frac = input_dic['zipfit_etempfit_rho']
+    rho_star = input_dic['zipfit_itempfit_rho']
+    beta = input_dic['zipfit_edensfit_rho']
+    #Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(beta[0][0]), axis=2)) # make Bt flat radial profile
+    #a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(beta[0][0]), axis=2)
+    Bt = 2
+    a = 0.67
+    Ti = (a * Bt * rho_star)**2
+    Te = temp_frac * Ti
+    ne = beta * Bt**2 / Te
+    output_dic['zipfit_etempfit_rho']=Te
+    output_dic['zipfit_itempfit_rho']=Ti
+    output_dic['zipfit_edensfit_rho']=ne
+    return output_dic
+
 # excluded_sigs for e.g. shotnum and times from preprocessed data
 def get_normalized_dic(denormed_dic, excluded_sigs=[]):
+    if use_gyroBohm:
+        denormed_dic=get_gyro_normalized_dic(denormed_dic)
     normalized_dic={}
     for sig in denormed_dic:
         if sig not in excluded_sigs:
@@ -111,4 +149,6 @@ def get_denormalized_dic(normed_dic, excluded_sigs=[]):
                 denormalized_dic[sig] = (normed_dic[sig] * normalizations[sig]['std']) + normalizations[sig]['mean']
         else:
             denormalized_dic[sig] = normed_dic[sig]
+    if use_gyroBohm:
+        denormalized_dic=get_gyro_denormalized_dic(denormalized_dic)
     return denormalized_dic
