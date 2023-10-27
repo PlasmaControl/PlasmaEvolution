@@ -15,6 +15,7 @@ normalizations={
     'neped_joe': {'mean': 0, 'std': 1},
     'zipfit_trotfit_rho': {'mean': 0, 'std': 1e2},
     'zipfit_itempfit_rho': {'mean': 0, 'std': 2},
+    'zipfit_zdensfit_rho': {'mean': 0, 'std': 2},
     'pres_EFIT01': {'mean': 0, 'std': 1e4},
     'pinj': {'mean': 0, 'std': 2e3},
     'tinj': {'mean': 0, 'std': 2},
@@ -41,7 +42,12 @@ normalizations={
     'epedHeightForNe3': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe5': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe7': {'mean': 0, 'std': 5e-3},
-    'D_tot': {'mean': 0, 'std': 1e2}
+    'D_tot': {'mean': 0, 'std': 1e2},
+    'H_tot': {'mean': 0, 'std': 1e2},
+    'Ar_tot': {'mean': 0, 'std': 1e2},
+    'Ne_tot': {'mean': 0, 'std': 1e2},
+    'He_tot': {'mean': 0, 'std': 1e2},
+    'N_tot': {'mean': 0, 'std': 1e2}
     }
 if use_gyroBohm:
     normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 1}
