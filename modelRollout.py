@@ -17,6 +17,8 @@ import glob
 import sys
 from customModels import IanRNN, IanMLP, HiroLinear
 
+sample_ind=0
+
 plot_ensemble=True
 
 models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLinear': HiroLinear}
@@ -31,6 +33,7 @@ label_map={'zipfit_etempfit_rho': r'$T_e$',
            'pinj': r'$P_{NBI}$',
            'tinj': r'$T_{NBI} (N m)$',
            'ip': r'$I_p$',
+           'bt': r'$B_t$',
            'li_EFIT01': 'li',
            'tribot_EFIT01': r'$\delta_l$',
            'tritop_EFIT01': r'$\delta_u$',
@@ -61,9 +64,13 @@ data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 #data_filename='/projects/EKOLEMEN/profile_predictor/joe_hiro_models/preprocessed_data_highip_val.pkl'
 
 if plot_ensemble:
-    max_loss=0.01
     considered_models=[]
     all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}*.tar'))
+    losses = []
+    for model_file in all_model_files:
+        saved_state=torch.load(model_file, map_location=torch.device('cpu'))
+        losses.append(np.min([saved_state['val_losses'][-i] for i in range(10)]))
+    max_loss = np.median(losses)
     for model_file in all_model_files:
         saved_state=torch.load(model_file, map_location=torch.device('cpu'))
         if saved_state['val_losses'][-1]<max_loss:
@@ -117,7 +124,7 @@ class ModelStepper:
             normed_dic[sig]=torch.stack(normed_dic[sig])
         return dataSettings.get_denormalized_dic(normed_dic)
 
-sample_ind=0
+
 shot=shots[sample_ind]
 start_time=times[sample_ind]
 time_length=len(x_test[sample_ind])
@@ -185,5 +192,5 @@ with torch.no_grad():
 axes[0,1].legend(fontsize=8)
 axes[0,0].legend(fontsize=8)
 fig.suptitle(f'Shot {shot}')
-plt.savefig(f'{output_filename_base}_plots{sample_ind}.svg', format='svg')
+plt.savefig(f'plots/{output_filename_base}_plots{shots[sample_ind]}.svg', format='svg')
 plt.show()
