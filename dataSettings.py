@@ -27,11 +27,6 @@ normalizations={
     'gasB': {'mean': 0, 'std': 1},
     'gasC': {'mean': 0, 'std': 1},
     'gasD': {'mean': 0, 'std': 1},
-    'D_tot': {'mean': 0, 'std': 100},
-    'H_tot': {'mean': 0, 'std': 100},
-    'He_tot': {'mean': 0, 'std': 100},
-    'N_tot': {'mean': 0, 'std': 100},
-    'Ne_tot': {'mean': 0, 'std': 100},
     'li_EFIT01': {'mean': 0, 'std': 1},
     'tribot_EFIT01': {'mean': 0, 'std': 1},
     'tritop_EFIT01': {'mean': 0, 'std': 1},
@@ -55,6 +50,12 @@ normalizations={
     'PIBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
     'PETOT_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
     'PEBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2}
+    'D_tot': {'mean': 0, 'std': 1e2},
+    'H_tot': {'mean': 0, 'std': 1e2},
+    'Ar_tot': {'mean': 0, 'std': 1e2},
+    'Ne_tot': {'mean': 0, 'std': 1e2},
+    'He_tot': {'mean': 0, 'std': 1e2},
+    'N_tot': {'mean': 0, 'std': 1e2}
     }
 
 clipped_signals={
@@ -64,14 +65,15 @@ clipped_signals={
 
 if use_gyroBohm:
     normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 1}
-    normalizations['zipfit_etempfit_rho'] = {'mean': 0, 'std': 5e-1}
+    #normalizations['zipfit_etempfit_rho'] = {'mean': 0, 'std': 1}
     normalizations['zipfit_itempfit_rho'] = {'mean': 0, 'std': 1}
 # if average normalized data for shot greater than this many deviations away,
 # exclude the shot from the dataset
 deviation_cutoff=10
 
-min_shot=140888
-max_shot=200000
+min_shot=0
+max_shot=2000000
+
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
 
@@ -114,32 +116,35 @@ def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
 
 def get_gyro_normalized_dic(input_dic):
     output_dic = copy.copy(input_dic)
-    Te = np.clip(input_dic['zipfit_etempfit_rho'], 0.01, None)
+    #Te = np.clip(input_dic['zipfit_etempfit_rho'], 0.01, None)
     Ti = np.clip(input_dic['zipfit_itempfit_rho'], 0.01, None)
     ne = np.clip(input_dic['zipfit_edensfit_rho'], 0.01, None)
-    Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(Te[0][0]), axis=2)) # make Bt flat radial profile
-    a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(Te[0][0]), axis=2) # make a flat radial profile
-    temp_frac = Te/Ti
+    Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(Ti[0][0]), axis=2)) # make Bt flat radial profile
+    a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(Ti[0][0]), axis=2) # make a flat radial profile
+    Ip = np.abs(np.repeat(input_dic['ip'][:,:,np.newaxis], len(Ti[0][0]), axis=2))
+    #temp_frac = Te/Ti
+    f_gr = ne / (Ip/(np.pi*a**2))
     rho_star = np.sqrt(Ti) / (a * Bt)
-    beta = ne * Te / Bt**2
-    output_dic['zipfit_etempfit_rho']=temp_frac
+    #beta = ne * Te * a / (Bt * Ip)
+    #output_dic['zipfit_etempfit_rho']=temp_frac
     output_dic['zipfit_itempfit_rho']=rho_star
-    output_dic['zipfit_edensfit_rho']=beta
+    output_dic['zipfit_edensfit_rho']=f_gr
     return output_dic
 
 def get_gyro_denormalized_dic(input_dic):
     output_dic = copy.copy(input_dic)
-    temp_frac = input_dic['zipfit_etempfit_rho']
+    #temp_frac = input_dic['zipfit_etempfit_rho']
     rho_star = input_dic['zipfit_itempfit_rho']
-    beta = input_dic['zipfit_edensfit_rho']
+    f_gr = input_dic['zipfit_edensfit_rho']
     #Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(beta[0][0]), axis=2)) # make Bt flat radial profile
     #a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(beta[0][0]), axis=2)
     Bt = 2
     a = 0.67
+    Ip = 1000000
     Ti = (a * Bt * rho_star)**2
-    Te = temp_frac * Ti
-    ne = beta * Bt**2 / Te
-    output_dic['zipfit_etempfit_rho']=Te
+    #Te = temp_frac * Ti
+    ne = f_gr * (Ip/(np.pi*a**2))
+    #output_dic['zipfit_etempfit_rho']=Te
     output_dic['zipfit_itempfit_rho']=Ti
     output_dic['zipfit_edensfit_rho']=ne
     return output_dic
