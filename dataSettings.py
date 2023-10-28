@@ -49,7 +49,7 @@ normalizations={
     'PITOT_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
     'PIBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
     'PETOT_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
-    'PEBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2}
+    'PEBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
     'D_tot': {'mean': 0, 'std': 1e2},
     'H_tot': {'mean': 0, 'std': 1e2},
     'Ar_tot': {'mean': 0, 'std': 1e2},
