@@ -54,14 +54,20 @@ def preprocess_data(processed_data_filename,
                 normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
                 keys_exist=True
             if keys_exist:
-                within_deviation=np.all([allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff) for key in profiles+scalars])
-                ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and check_signal_off(f[shot]['ech_pwr_total'][:], threshold=0.1))
-                ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
+                within_deviation=True
+                for signal in profiles+scalars:
+                    if signal not in dataSettings.clipped_signals:
+                        if not allTimesInBounds(normalized_dic[signal],dataSettings.deviation_cutoff):
+                            within_deviation=False
+                ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=0.1))
+                ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
                 run_ok=not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
                 if verbose:
                     if not within_deviation:
                         print(f'not within deviation_cutoff')
-                        print({key: allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff) for key in profiles+scalars})
+                        for key in profiles+scalars:
+                            if not allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff):
+                                print(key)
                     if not ech_ok:
                         print(f"ech sum: {np.sum(f[shot]['ech_pwr_total'][:])}")
                     if not ich_ok:

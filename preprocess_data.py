@@ -26,7 +26,7 @@ datasetParams={'raw_data_filename': raw_data_filename, 'profiles': profiles, 'sc
 
 # useful for testing
 if False:
-    datasetParams['max_num_shots': 5]
+    datasetParams['max_num_shots']=2
 
 print(raw_data_filename)
 train_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'train.pkl',shots=train_shots,**datasetParams)
