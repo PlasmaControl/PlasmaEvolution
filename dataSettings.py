@@ -15,6 +15,7 @@ normalizations={
     'neped_joe': {'mean': 0, 'std': 1},
     'zipfit_trotfit_rho': {'mean': 0, 'std': 1e2},
     'zipfit_itempfit_rho': {'mean': 0, 'std': 2},
+    'zipfit_zdensfit_rho': {'mean': 0, 'std': 2},
     'pres_EFIT01': {'mean': 0, 'std': 1e4},
     'pinj': {'mean': 0, 'std': 2e3},
     'tinj': {'mean': 0, 'std': 2},
@@ -26,6 +27,11 @@ normalizations={
     'gasB': {'mean': 0, 'std': 1},
     'gasC': {'mean': 0, 'std': 1},
     'gasD': {'mean': 0, 'std': 1},
+    'D_tot': {'mean': 0, 'std': 100},
+    'H_tot': {'mean': 0, 'std': 100},
+    'He_tot': {'mean': 0, 'std': 100},
+    'N_tot': {'mean': 0, 'std': 100},
+    'Ne_tot': {'mean': 0, 'std': 100},
     'li_EFIT01': {'mean': 0, 'std': 1},
     'tribot_EFIT01': {'mean': 0, 'std': 1},
     'tritop_EFIT01': {'mean': 0, 'std': 1},
@@ -40,8 +46,22 @@ normalizations={
     'epedHeightForNe1': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe3': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe5': {'mean': 0, 'std': 5e-3},
-    'epedHeightForNe7': {'mean': 0, 'std': 5e-3}
+    'epedHeightForNe7': {'mean': 0, 'std': 5e-3},
+    'CC_astrainterpretiveZIPFIT': {'mean': 0, 'std': 50},
+    'CUBS_astrainterpretiveZIPFIT': {'mean': 0, 'std': 1},
+    'HE_astrainterpretiveZIPFIT': {'mean': 0, 'std': 1},
+    'XI_astrainterpretiveZIPFIT': {'mean': 0, 'std': 1},
+    'PITOT_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
+    'PIBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
+    'PETOT_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
+    'PEBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2}
     }
+
+clipped_signals={
+    'HE_astrainterpretiveZIPFIT': {'min': 0, 'max': 20},
+    'XI_astrainterpretiveZIPFIT': {'min': 0, 'max': 20}
+    }
+
 if use_gyroBohm:
     normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 1}
     normalizations['zipfit_etempfit_rho'] = {'mean': 0, 'std': 5e-1}
