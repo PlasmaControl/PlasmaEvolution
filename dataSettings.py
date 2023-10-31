@@ -64,7 +64,7 @@ clipped_signals={
     }
 
 if use_gyroBohm:
-    normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 1}
+    normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 5e-6}
     #normalizations['zipfit_etempfit_rho'] = {'mean': 0, 'std': 1}
     normalizations['zipfit_itempfit_rho'] = {'mean': 0, 'std': 1}
 # if average normalized data for shot greater than this many deviations away,
