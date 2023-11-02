@@ -10,7 +10,6 @@ import customLosses
 import customDatasetMakers
 
 import dataSettings
-import dataSettings
 import numpy as np
 import os
 import glob
@@ -34,6 +33,7 @@ label_map={'zipfit_etempfit_rho': r'$T_e$',
            'tinj': r'$T_{NBI} (N m)$',
            'ip': r'$I_p$',
            'bt': r'$B_t$',
+           'D_tot': 'D_tot',
            'li_EFIT01': 'li',
            'tribot_EFIT01': r'$\delta_l$',
            'tritop_EFIT01': r'$\delta_u$',
@@ -124,7 +124,6 @@ class ModelStepper:
             normed_dic[sig]=torch.stack(normed_dic[sig])
         return dataSettings.get_denormalized_dic(normed_dic)
 
-
 shot=shots[sample_ind]
 start_time=times[sample_ind]
 time_length=len(x_test[sample_ind])
@@ -158,7 +157,7 @@ if len(plotted_parameters)>0:
     num_columns = 4
 fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),num_columns, sharex='col', figsize=(8,5))
 plt.subplots_adjust(hspace=0, wspace=1)
-NSTEPS_PLOTTED=4
+NSTEPS_PLOTTED=3
 colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
 plotted_time_inds=[int(t) for t in np.linspace(0, time_length, NSTEPS_PLOTTED, endpoint=False)]
 normalized_true_state=x_test[sample_ind]
@@ -179,7 +178,7 @@ with torch.no_grad():
             axes[i,1].plot(x, denormalized_true_dic[profile][time_ind],
                            linestyle='--', c=colors[which_color])
     for i,actuator in enumerate(plotted_actuators):
-        axes[i,2].plot(times, denormalized_true_dic[actuator],
+        axes[i,2].plot(times, denormalized_true_dic[actuator][0],
                        label='real', c='k', linestyle='--')
         axes[i,2].set_ylabel(label_map[actuator])
     if len(plotted_parameters)>0:
@@ -189,6 +188,9 @@ with torch.no_grad():
             axes[i,3].plot(times, denormalized_true_dic[parameter],
                            label='real', c='k', linestyle='--')
             axes[i,3].set_ylabel(label_map[parameter])
+    axes[0, 0].text(0.5, 1.05, 'Predictions over time', transform=axes[0, 0].transAxes, fontsize=10, ha='center')
+    axes[0, 1].text(0.5, 1.05, 'Predicted profiles', transform=axes[0, 1].transAxes, fontsize=10, ha='center')
+    axes[0, 2].text(0.5, 1.05, 'Actuators', transform=axes[0, 2].transAxes, fontsize=10, ha='center')
 axes[0,1].legend(fontsize=8)
 axes[0,0].legend(fontsize=8)
 fig.suptitle(f'Shot {shot}')
