@@ -1,6 +1,6 @@
 import numpy as np
 import copy
-
+import torch
 # number of x points in profile data
 nx=33
 # timestep in dataset, in seconds
@@ -32,7 +32,7 @@ normalizations={
     'tritop_EFIT01': {'mean': 0, 'std': 1},
     'aminor_EFIT01': {'mean': 0, 'std': 1},
     'rmaxis_EFIT01': {'mean': 0, 'std': 1},
-    'dssdenest': {'mean': 0, 'std': 1},
+    'dssdenest': {'mean': 0, 'std': 2},
     'kappa_EFIT01': {'mean': 0, 'std': 1},
     'volume_EFIT01': {'mean': 0, 'std': 10},
     'betan_EFIT01': {'mean': 0, 'std': 1},
@@ -64,7 +64,7 @@ clipped_signals={
     }
 
 if use_gyroBohm:
-    normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 1}
+    normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 5e-6}
     #normalizations['zipfit_etempfit_rho'] = {'mean': 0, 'std': 1}
     normalizations['zipfit_itempfit_rho'] = {'mean': 0, 'std': 1}
 # if average normalized data for shot greater than this many deviations away,
@@ -109,10 +109,25 @@ def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
         dic[parameter]=[state_arr[ind] for state_arr in state_arrs]
         ind=ind+1
     for actuator in actuators:
-        dic[actuator]=[state_arr[ind] for state_arr in state_arrs]
+        dic[actuator]=[torch.tensor([state_arr[ind] for state_arr in state_arrs]), torch.tensor([state_arr[ind+len(actuators)] for state_arr in state_arrs])]
         ind=ind+1
     # in future could also return the next step values for actuators
     return dic
+
+def dic_to_state(dic, profiles, parameters, actuators=[]):
+    state_arrs = []
+    for i in range(len(dic[profiles[0]])):
+        state_arr = []
+        for profile in profiles:
+            state_arr.extend(dic[profile][i])
+        for parameter in parameters:
+            state_arr.append(dic[parameter][i])
+        for actuator in actuators:
+            state_arr.append(dic[actuator][0][i])
+        for actuator in actuators:
+            state_arr.append(dic[actuator][1][i])
+        state_arrs.append(state_arr)
+    return torch.tensor(state_arrs)
 
 def get_gyro_normalized_dic(input_dic):
     output_dic = copy.copy(input_dic)
@@ -122,11 +137,8 @@ def get_gyro_normalized_dic(input_dic):
     Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(Ti[0][0]), axis=2)) # make Bt flat radial profile
     a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(Ti[0][0]), axis=2) # make a flat radial profile
     Ip = np.abs(np.repeat(input_dic['ip'][:,:,np.newaxis], len(Ti[0][0]), axis=2))
-    #temp_frac = Te/Ti
     f_gr = ne / (Ip/(np.pi*a**2))
     rho_star = np.sqrt(Ti) / (a * Bt)
-    #beta = ne * Te * a / (Bt * Ip)
-    #output_dic['zipfit_etempfit_rho']=temp_frac
     output_dic['zipfit_itempfit_rho']=rho_star
     output_dic['zipfit_edensfit_rho']=f_gr
     return output_dic
@@ -139,7 +151,7 @@ def get_gyro_denormalized_dic(input_dic):
     #Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(beta[0][0]), axis=2)) # make Bt flat radial profile
     #a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(beta[0][0]), axis=2)
     Bt = 2
-    a = 0.67
+    a = 0.5
     Ip = 1000000
     Ti = (a * Bt * rho_star)**2
     #Te = temp_frac * Ti
