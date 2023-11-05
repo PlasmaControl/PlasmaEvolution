@@ -28,6 +28,7 @@ label_map={'zipfit_etempfit_rho': r'$T_e$',
            'dssdenest': r'$<n_e>$'}
 
 def modelRollout_plot(predicted_means, predicted_stds, denormalized_true_dic, plotted_times, time_length, plotted_profiles, plotted_parameters, plotted_actuators, rho_ind, shot, title):
+    plot_filename=f'{title}.svg'
     with torch.no_grad():
         NSTEPS_PLOTTED=3
         num_columns = 3
@@ -69,5 +70,5 @@ def modelRollout_plot(predicted_means, predicted_stds, denormalized_true_dic, pl
         axes[0, 1].legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=6)
         axes[1, 2].legend(fontsize=6)
         fig.suptitle(f'{title}')
-        plt.savefig(f'plots/{title}.svg')
+        plt.savefig(plot_filename)
         plt.show()
