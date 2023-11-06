@@ -20,6 +20,9 @@ class ModelStepper:
         self.all_predictions=torch.zeros((len(self.models),state_length))
         for which_model,model in enumerate(self.models):
             self.all_predictions[which_model]=initial_state
+    def warmup_step(self, input_tensor):
+        for which_model,model in enumerate(self.models):
+            self.all_predictions[which_model]=model(input_tensor[None,:])[0]
     def prediction_step(self, actuator_array):
         for which_model,model in enumerate(self.models):
             input_tensor=torch.cat((self.all_predictions[which_model],actuator_array))
@@ -67,31 +70,24 @@ def get_considered_models(config_filename, plot_ensemble=True):
         considered_models=[model]
     return considered_models
 
-def get_predictions(normalized_true_state, considered_models, profiles, parameters):
-    time_length=len(normalized_true_state)
-    state_length=len(profiles)*dataSettings.nx+len(parameters)
+def get_predictions(normalized_true_state, considered_models, profiles, parameters, nwarmup=0):
     predicted_means={}
     predicted_stds={}
+    time_length=len(normalized_true_state)
     for profile in profiles:
-        predicted_means[profile]=torch.zeros((time_length,dataSettings.nx))
-        predicted_stds[profile]=torch.zeros((time_length,dataSettings.nx))
+        predicted_means[profile]=np.zeros((time_length,dataSettings.nx))
+        predicted_stds[profile]=np.zeros((time_length,dataSettings.nx))
     for parameter in parameters:
-        predicted_means[parameter]=torch.zeros((time_length,1))
-        predicted_stds[parameter]=torch.zeros((time_length,1))
-    for step in range(time_length):
-        step_tensor=normalized_true_state[step]
-        step_state=step_tensor[:state_length]
-        step_actuators=step_tensor[state_length:]
-        if step==0:
-            modelstepper=ModelStepper(step_state, considered_models, profiles, parameters)
-        modelstepper.prediction_step(step_actuators)
-        denormed_predictions=modelstepper.get_denormed_predictions()
-        for sig in profiles+parameters:
-            predicted_means[sig][step, :]=torch.mean(denormed_predictions[sig], dim=0)
-            predicted_stds[sig][step, :]=torch.std(denormed_predictions[sig], dim=0)
+        predicted_means[parameter]=np.zeros((time_length,1))
+        predicted_stds[parameter]=np.zeros((time_length,1))
+    all_predictions=get_predictions_per_model(normalized_true_state, considered_models, profiles, parameters, nwarmup=0)
+    for sig in profiles+parameters:
+        for step, denormed_prediction in enumerate(all_predictions[sig]):
+            predicted_means[sig][step, :]=torch.mean(denormed_prediction, dim=0).detach().numpy()
+            predicted_stds[sig][step, :]=torch.std(denormed_prediction, dim=0).detach().numpy()
     return predicted_means, predicted_stds
 
-def get_predictions_per_model(normalized_true_state, considered_models, profiles, parameters):
+def get_predictions_per_model(normalized_true_state, considered_models, profiles, parameters, nwarmup=0):
     time_length=len(normalized_true_state)
     state_length=len(profiles)*dataSettings.nx+len(parameters)
     predicted_values = {}
@@ -105,7 +101,10 @@ def get_predictions_per_model(normalized_true_state, considered_models, profiles
         step_actuators=step_tensor[state_length:]
         if step==0:
             modelstepper=ModelStepper(step_state, considered_models, profiles, parameters)
-        modelstepper.prediction_step(step_actuators)
+        if step<nwarmup:
+            modelstepper.warmup_step(step_tensor)
+        else:
+            modelstepper.prediction_step(step_actuators)
         denormed_predictions=modelstepper.get_denormed_predictions()
         for sig in profiles+parameters:
             predicted_values[sig][step, :, :]=denormed_predictions[sig]

@@ -43,6 +43,8 @@ def preprocess_data(processed_data_filename,
             used_shots=available_shots
         else:
             used_shots=np.intersect1d(available_shots,[str(shot) for shot in shots])
+        if verbose:
+            print(used_shots)
         prev_time=time.time()
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
         SHOTS_PER_PRINT = 1000
@@ -141,6 +143,86 @@ def preprocess_data(processed_data_filename,
         processed_data[signal]=np.array(processed_data[signal])
     with open(processed_data_filename, 'wb') as f:
         pickle.dump(processed_data,f)
+
+# lets you included nan for autoregressive predictions
+def preprocess_shot_times(processed_data_filename,
+                          raw_data_filename,profiles,scalars,
+                          shots, initial_times, end_times, nwarmup=0,
+                          lookahead=1,
+                          ip_minimum=None,ip_maximum=None,
+                          excluded_runs=[],exclude_ech=True, exclude_ich=True,
+                          max_num_shots=np.inf):
+    print(f'Building dataset {processed_data_filename}...')
+    start_time=time.time()
+    with h5py.File(raw_data_filename,'r') as f:
+        times=f['times'][:]
+        processed_data={key: [] for key in profiles+scalars+['shotnum','times']}
+        recorded_shots, recorded_times = [],[]
+        available_shots = list(f.keys())
+        available_shots.remove('times')
+        available_shots.remove('spatial_coordinates')
+        used_shots=np.intersect1d(available_shots,[str(shot) for shot in shots])
+        prev_time=time.time()
+        included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
+        SHOTS_PER_PRINT = 1000
+        for nshot,shot in enumerate(used_shots):
+            initial_time=initial_times[shot]
+            end_time=end_times[shot]
+            start_ind=np.argmin(np.abs(times-initial_time))
+            end_ind=np.argmin(np.abs(times-end_time))
+            print(shot)
+            keys_exist=False
+            if np.all([key in f[shot].keys() for key in profiles+scalars]):
+                normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
+                keys_exist=True
+            if keys_exist:
+                within_deviation=True
+                for signal in profiles+scalars:
+                    if signal not in dataSettings.clipped_signals:
+                        if not allTimesInBounds(normalized_dic[signal],dataSettings.deviation_cutoff):
+                            within_deviation=False
+                ech_ok=not (('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=0.1))
+                ich_ok=not (('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
+                if verbose:
+                    if not within_deviation:
+                        print(f'not within deviation_cutoff')
+                    if not ech_ok:
+                        print(f"ech sum: {np.sum(f[shot]['ech_pwr_total'][:])}")
+                    if not ich_ok:
+                        print(f"ich sum: {np.sum(f[shot]['ich_pwr_total'][:])}")
+            elif verbose:
+                print('missing key(s):')
+            if not np.all([profiles_ok(f[shot][profile][start_ind:start_ind+nwarmup+lookahead+1]) for profile in profiles]):
+                print(f"{shot} bad profiles, going to next shot")
+                continue
+            if keys_exist:
+                for t_ind in range(start_ind, end_ind):
+                    tmp_profiles_arr={}
+                    tmp_scalars_arr={}
+                    for profile in profiles:
+                        tmp_profiles_arr[profile]=f[shot][profile][t_ind:t_ind+lookahead+1]
+                    for scalar in scalars:
+                        tmp_scalars_arr[scalar]=f[shot][scalar][t_ind:t_ind+lookahead+1]
+                    if np.all([scalars_ok(tmp_scalars) for tmp_scalars in tmp_scalars_arr.values()]):
+                        for profile in profiles:
+                            processed_data[profile].append(tmp_profiles_arr[profile])
+                        for scalar in scalars:
+                            processed_data[scalar].append(tmp_scalars_arr[scalar])
+                        processed_data['shotnum'].append(np.array([int(shot)]*(lookahead+1)))
+                        processed_data['times'].append(times[t_ind:t_ind+lookahead+1])
+                        included_timestep_count+=1
+                    else:
+                        print(f'Shot {shot} stopping at {times[t_ind]} (was supposed to be {times[start_ind]}-{times[end_ind]})')
+                        break
+            if not (nshot+1) % SHOTS_PER_PRINT:
+                print(f'{(nshot+1):5d}/{len(used_shots)} shots ({(time.time()-prev_time):0.2e}s)')
+                prev_time=time.time()
+    print(f'...took {(time.time()-start_time)/60:0.2f}min,')
+    for signal in processed_data:
+        processed_data[signal]=np.array(processed_data[signal])
+    with open(processed_data_filename, 'wb') as f:
+        pickle.dump(processed_data,f)
+
 
 def ian_dataset(processed_data_filename,
                 profiles, actuators, parameters,
