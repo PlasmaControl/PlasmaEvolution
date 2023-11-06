@@ -80,7 +80,7 @@ def get_predictions(normalized_true_state, considered_models, profiles, paramete
     for parameter in parameters:
         predicted_means[parameter]=np.zeros((time_length,1))
         predicted_stds[parameter]=np.zeros((time_length,1))
-    all_predictions=get_predictions_per_model(normalized_true_state, considered_models, profiles, parameters, nwarmup=0)
+    all_predictions=get_predictions_per_model(normalized_true_state, considered_models, profiles, parameters, nwarmup=nwarmup)
     for sig in profiles+parameters:
         for step, denormed_prediction in enumerate(all_predictions[sig]):
             predicted_means[sig][step, :]=torch.mean(denormed_prediction, dim=0).detach().numpy()

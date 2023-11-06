@@ -41,7 +41,7 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
     colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
     time_inds_predicted_for_nsteps=np.array([int(t) for t in np.linspace(0, len(predicted_times), NSTEPS_PLOTTED, endpoint=False)])
     times_for_nsteps=predicted_times[time_inds_predicted_for_nsteps]
-    time_inds_true_for_nsteps=[np.min(np.abs(true_times-t)) for t in times_for_nsteps]
+    time_inds_true_for_nsteps=[np.argmin(np.abs(true_times-t)) for t in times_for_nsteps]
     x=np.linspace(0,1,dataSettings.nx)
     #plotted_profiles[0], plotted_profiles[3] = plotted_profiles[3], plotted_profiles[0]
     #plotted_actuators.insert(0, plotted_actuators.pop())
@@ -53,7 +53,7 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
         axes[i,1].set_ylabel(label_map[profile])
         for step_ind in range(NSTEPS_PLOTTED):
             axes[i,2].plot(x, predicted_means[profile][time_inds_predicted_for_nsteps[step_ind]], c=colors[step_ind],
-                           label=f'{predicted_times[step_ind]}ms')
+                           label=f'{times_for_nsteps[step_ind]}ms')
             axes[i,2].plot(x, denormalized_true_dic[profile][time_inds_true_for_nsteps[step_ind]],
                            linestyle='--', c=colors[step_ind])
     for i,actuator in enumerate(plotted_actuators):
