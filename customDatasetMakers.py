@@ -24,6 +24,19 @@ def allTimesInBounds(arr, cutoff):
 def check_signal_off(signal, threshold=0.1):
     return (np.all(np.isnan(signal)) or np.nanmax(signal)<threshold)
 
+# to get excluded_runs for list of shots, run the following in OMFIT:
+#
+# query="""SELECT summaries.shot,shots.run,runs.brief
+#          FROM summaries
+#          LEFT JOIN shots ON summaries.shot=shots.shot
+#          LEFT JOIN runs ON runs.run=shots.run
+#          WHERE summaries.shot in {}
+#       """.format(
+#     '({})'.format(','.join([str(elem) for elem in shots]))
+#     )
+# sql=OMFITrdb(query,db='d3drdb',server='d3drdb',by_column=True)
+# runs=list(set(sql['run']))
+# print(str(runs))
 def preprocess_data(processed_data_filename,
                     raw_data_filename,profiles,scalars,
                     shots=None,lookahead=1,
@@ -145,9 +158,11 @@ def preprocess_data(processed_data_filename,
         pickle.dump(processed_data,f)
 
 # lets you included nan for autoregressive predictions
+# shots is a list of shots; initial_times is a list of start times (in ms);
+# end_times is a list of end times (in ms)
 def preprocess_shot_times(processed_data_filename,
                           raw_data_filename,profiles,scalars,
-                          shots, initial_times, end_times, nwarmup=0,
+                          shots, time_bounds,
                           lookahead=1,
                           ip_minimum=None,ip_maximum=None,
                           excluded_runs=[],exclude_ech=True, exclude_ich=True,
@@ -161,13 +176,16 @@ def preprocess_shot_times(processed_data_filename,
         available_shots = list(f.keys())
         available_shots.remove('times')
         available_shots.remove('spatial_coordinates')
-        used_shots=np.intersect1d(available_shots,[str(shot) for shot in shots])
         prev_time=time.time()
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
         SHOTS_PER_PRINT = 1000
-        for nshot,shot in enumerate(used_shots):
-            initial_time=initial_times[shot]
-            end_time=end_times[shot]
+        shots=[str(shot) for shot in shots]
+        for nshot,shot in enumerate(shots):
+            if shot not in available_shots:
+                print('shot not in {raw_data_filename}, going to next shot')
+                continue
+            initial_time=time_bounds[nshot][0]
+            end_time=time_bounds[nshot][1]
             start_ind=np.argmin(np.abs(times-initial_time))
             end_ind=np.argmin(np.abs(times-end_time))
             print(shot)
@@ -192,11 +210,11 @@ def preprocess_shot_times(processed_data_filename,
                         print(f"ich sum: {np.sum(f[shot]['ich_pwr_total'][:])}")
             elif verbose:
                 print('missing key(s):')
-            if not np.all([profiles_ok(f[shot][profile][start_ind:start_ind+nwarmup+lookahead+1]) for profile in profiles]):
+            if not np.all([profiles_ok(f[shot][profile][start_ind]) for profile in profiles]):
                 print(f"{shot} bad profiles, going to next shot")
                 continue
             if keys_exist:
-                for t_ind in range(start_ind, end_ind):
+                for t_ind in range(start_ind, end_ind+1):
                     tmp_profiles_arr={}
                     tmp_scalars_arr={}
                     for profile in profiles:
@@ -215,7 +233,7 @@ def preprocess_shot_times(processed_data_filename,
                         print(f'Shot {shot} stopping at {times[t_ind]} (was supposed to be {times[start_ind]}-{times[end_ind]})')
                         break
             if not (nshot+1) % SHOTS_PER_PRINT:
-                print(f'{(nshot+1):5d}/{len(used_shots)} shots ({(time.time()-prev_time):0.2e}s)')
+                print(f'{(nshot+1):5d}/{len(shots)} shots ({(time.time()-prev_time):0.2e}s)')
                 prev_time=time.time()
     print(f'...took {(time.time()-start_time)/60:0.2f}min,')
     for signal in processed_data:
