@@ -32,16 +32,21 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
                       plotted_profiles, plotted_parameters, plotted_actuators,
                       rho_ind, title):
     plot_filename=f'{title}.svg'
-    NSTEPS_PLOTTED=3
+    NSTEPS_PLOTTED=2
     num_columns = 3
     if len(plotted_parameters)>0:
         num_columns = 4
     fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),num_columns, sharex='col', figsize=(8,5))
     plt.subplots_adjust(hspace=0, wspace=1)
     colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
-    time_inds_predicted_for_nsteps=np.array([int(t) for t in np.linspace(0, len(predicted_times), NSTEPS_PLOTTED, endpoint=False)])
+    time_inds_predicted_for_nsteps=np.array([int(t) for t in np.linspace(int(len(predicted_times)/NSTEPS_PLOTTED),
+                                                                         len(predicted_times)-1,
+                                                                         NSTEPS_PLOTTED,
+                                                                         endpoint=True)])
     times_for_nsteps=predicted_times[time_inds_predicted_for_nsteps]
     time_inds_true_for_nsteps=[np.argmin(np.abs(true_times-t)) for t in times_for_nsteps]
+    time_prediction_start=predicted_times[0]
+    time_ind_true_start=np.argmin(np.abs(true_times-time_prediction_start))-1
     x=np.linspace(0,1,dataSettings.nx)
     #plotted_profiles[0], plotted_profiles[3] = plotted_profiles[3], plotted_profiles[0]
     #plotted_actuators.insert(0, plotted_actuators.pop())
@@ -51,6 +56,9 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
         axes[i,1].plot(true_times, denormalized_true_dic[profile][:,rho_ind],
                        label='real', c='k', linestyle='--')
         axes[i,1].set_ylabel(label_map[profile])
+        # plot the initial experimental step always
+        axes[i,2].plot(x, denormalized_true_dic[profile][time_ind_true_start],
+                       alpha=0.5, c='k', label=f'{true_times[time_ind_true_start]}ms')
         for step_ind in range(NSTEPS_PLOTTED):
             axes[i,2].plot(x, predicted_means[profile][time_inds_predicted_for_nsteps[step_ind]], c=colors[step_ind],
                            label=f'{times_for_nsteps[step_ind]}ms')

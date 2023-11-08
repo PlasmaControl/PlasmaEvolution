@@ -80,9 +80,9 @@ for sample_ind in range(len(x_test)):
 
     if plot:
         title=f'Model_{output_filename_base}_Shot_{shot}.{sim_start_time}to{sim_end_time}{appendage}'
-        predicted_times_plot=true_times[NUM_WARMUP_STEPS:]
-        predicted_means_plot={profile: predicted_means[profile][NUM_WARMUP_STEPS:] for profile in profiles}
-        predicted_stds_plot={profile: predicted_stds[profile][NUM_WARMUP_STEPS:] for profile in profiles}
+        predicted_times_plot=true_times[NUM_WARMUP_STEPS+1:]
+        predicted_means_plot={profile: predicted_means[profile][nwarmup:-1] for profile in profiles}
+        predicted_stds_plot={profile: predicted_stds[profile][nwarmup:-1] for profile in profiles}
         plotting_helpers.modelRollout_plot(predicted_means_plot, predicted_stds_plot, predicted_times_plot,
                                            denormalized_true_dic, true_times,
                                            plotted_profiles, plotted_parameters, plotted_actuators,

@@ -46,7 +46,7 @@ def get_considered_models(config_filename, plot_ensemble=True):
     actuator_length=len(actuators)
     considered_models=[]
     if plot_ensemble:
-        all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}*.tar'))
+        all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}[0-9]*.tar'))
         # exclude models under the median loss
         losses = []
         for model_file in all_model_files:
