@@ -98,23 +98,29 @@ KEV_PER_1019_TO_J=1.602e3
 # actuators is [] since the output state only has profiles and parameters,
 # but the input state has actuators at t and t+1 also
 # if only one state, wrap it like state_arrs=[state_arr] to call this fxn
-def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
+def state_to_dic(state_arrs, profiles, parameters, actuators=[], lookahead=1):
     #state_arrs=torch.atleast_2d(state_arrs)
+    state_arrs=np.array(state_arrs)
     num_states=len(state_arrs)
     dic={}
-    for sig in parameters+actuators:
-        dic[sig]=np.zeros(num_states)
     for sig in profiles:
         dic[sig]=np.zeros((num_states,nx))
+    for sig in parameters:
+        dic[sig]=np.zeros(num_states)
+    for sig in actuators:
+        dic[sig]=np.zeros((lookahead+1,num_states))
     ind,next_ind=0,0
     for profile in profiles:
         next_ind=ind+nx
         dic[profile]=state_arrs[:,ind:next_ind]
         ind=next_ind
-    for sig in parameters+actuators:
+    for sig in parameters:
         dic[sig]=state_arrs[:,ind]
         ind=ind+1
-    # in future could also return the next step values for actuators
+    for lookahead in range(lookahead+1):
+        for sig in actuators:
+            dic[sig][lookahead]=state_arrs[:,ind]
+            ind=ind+1
     return dic
 
 def dic_to_state(dic, profiles, parameters, actuators=[]):

@@ -5,6 +5,7 @@ import customDatasetMakers
 import dataSettings
 import numpy as np
 import sys
+import os
 import prediction_helpers
 import plotting_helpers
 import pickle
@@ -12,9 +13,9 @@ from train_helpers import make_bucket
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from dataSettings import state_to_dic, get_denormalized_dic
 
-pickle_filename='dumped_predictions.pkl'
-bucket_size=50
+bucket_size=5000
 ensemble=True
+fake_actuators=False
 nwarmup=0
 
 if (len(sys.argv)-1) > 0:
@@ -31,7 +32,12 @@ plotted_profiles=profiles
 plotted_actuators=actuators
 plotted_parameters=parameters
 
-data_filename=config['preprocess']['preprocessed_data_filenamebase']+'train.pkl'
+appendage=''
+if fake_actuators:
+    appendage+='_FAKE'
+pickle_filename=f"{output_filename_base}{appendage}.pkl"
+
+data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 
 x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,actuators,parameters,sort_by_size=True)
 
@@ -46,30 +52,39 @@ running_num_samples=np.insert(np.cumsum([len(bucket) for bucket in test_x_bucket
 all_info={}
 all_keys=[]
 for sample_ind in range(len(x_test)):
+    if fake_actuators:
+        x_test[sample_ind]=prediction_helpers.get_fake_actuator_state(x_test[sample_ind], profiles, parameters, actuators)
     num_times=len(x_test[sample_ind])
-    true_times=np.arange(times[sample_ind], times[sample_ind]+num_times*int(dataSettings.DT*1e3), int(dataSettings.DT*1e3))
+    # add 1 because we're looking at predicted compared to target (and -1 for actuator from input step)
+    true_times=np.arange(int(times[sample_ind]+dataSettings.DT*1e3),
+                         int(times[sample_ind]+(num_times+1)*dataSettings.DT*1e3),
+                         dataSettings.DT*1e3)
     start_time=true_times[0]
     end_time=true_times[-1]
     key=f'{shots[sample_ind]}_{start_time}_{end_time}'
     all_keys.append(key)
-    all_info[key]={}
-    all_info[key]['times']=true_times
+    all_info[key]={'truth': {'actuators': {}, 'profiles': {}, 'parameters': {}},
+                   'predictions': {'profiles': {}, 'parameters': {}}}
+    all_info[key]['truth']['times']=np.array(true_times)
+    # remember this returns actuators at the present AND NEXT time, hence -1 index below
     input_dic=state_to_dic(x_test[sample_ind], profiles, parameters, actuators)
     denormed_dic=get_denormalized_dic(input_dic)
     for sig in actuators:
-        all_info[key][sig]=denormed_dic[sig]
+        all_info[key]['truth']['actuators'][sig]=denormed_dic[sig][-1]
     output_dic=state_to_dic(y_test[sample_ind], profiles, parameters)
     denormed_dic=get_denormalized_dic(output_dic)
-    for sig in profiles+parameters:
-        all_info[key][sig]=denormed_dic[sig]
+    for sig in profiles:
+        all_info[key]['truth']['profiles'][sig]=denormed_dic[sig]
+    for sig in parameters:
+        all_info[key]['truth']['parameters'][sig]=denormed_dic[sig]
     # predictions start after warmup; right now we just exclude the last timestep
     # but the ground truth for it is in y_test (the targets) if we want it later
-    all_info[key]['predicted_times']=true_times[nwarmup:]
+    all_info[key]['predictions']['times']=true_times[nwarmup:]
     for sig in parameters:
-        all_info[key][f'predicted_{sig}']=np.zeros((len(considered_models),num_times-nwarmup))
+        all_info[key]['predictions']['parameters'][sig]=np.zeros((len(considered_models),num_times-nwarmup))
     for sig in profiles:
-        all_info[key][f'predicted_{sig}']=np.zeros((len(considered_models),num_times-nwarmup,dataSettings.nx))
-        
+        all_info[key]['predictions']['profiles'][sig]=np.zeros((len(considered_models),num_times-nwarmup,dataSettings.nx))
+
 with torch.no_grad():
     for which_bucket in range(len(test_x_buckets)):
         x_bucket=test_x_buckets[which_bucket]
@@ -79,8 +94,8 @@ with torch.no_grad():
         #padded_x=padded_x.to(device)
         #padded_y=padded_y.to(device)
         # only save simulations after warmup is over
-        for i in range(len(considered_models)):
-            model=considered_models[i]
+        for which_model in range(len(considered_models)):
+            model=considered_models[which_model]
             model_output=model(padded_x, autoregression_probability=1, nwarmup=nwarmup)[:,nwarmup:,:]
             unpadded_output=unpad_sequence(model_output, length_bucket, batch_first=True)
             for which_output,output in enumerate(unpadded_output):
@@ -89,7 +104,10 @@ with torch.no_grad():
                 output_dic=state_to_dic(output, profiles, parameters)
                 denormed_dic=get_denormalized_dic(output_dic)
                 for sig in denormed_dic:
-                    all_info[key][f'predicted_{sig}'][i]=denormed_dic[sig]
+                    if sig in profiles:
+                        all_info[key]['predictions']['profiles'][sig][which_model]=denormed_dic[sig]
+                    elif sig in parameters:
+                        all_info[key]['predictions']['parameters'][sig][which_model]=denormed_dic[sig]
 
 with open(pickle_filename,'wb') as f:
     pickle.dump(all_info,f)
