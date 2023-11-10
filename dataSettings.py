@@ -77,7 +77,7 @@ max_shot=2000000
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
 
-train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in val_indices+test_indices]
+train_shots=[187076, 191577] #[shot for shot in range(min_shot,max_shot) if shot%10 not in val_indices+test_indices]
 val_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in val_indices]
 test_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in test_indices]
 
@@ -97,19 +97,22 @@ KEV_PER_1019_TO_J=1.602e3
 
 # actuators is [] since the output state only has profiles and parameters,
 # but the input state has actuators at t and t+1 also
+# if only one state, wrap it like state_arrs=[state_arr] to call this fxn
 def state_to_dic(state_arrs, profiles, parameters, actuators=[]):
     #state_arrs=torch.atleast_2d(state_arrs)
-    dic={sig: None for sig in profiles+parameters}
+    num_states=len(state_arrs)
+    dic={}
+    for sig in parameters+actuators:
+        dic[sig]=np.zeros(num_states)
+    for sig in profiles:
+        dic[sig]=np.zeros((num_states,nx))
     ind,next_ind=0,0
     for profile in profiles:
         next_ind=ind+nx
-        dic[profile]=[state_arr[ind:next_ind] for state_arr in state_arrs]
+        dic[profile]=state_arrs[:,ind:next_ind]
         ind=next_ind
-    for parameter in parameters:
-        dic[parameter]=[state_arr[ind] for state_arr in state_arrs]
-        ind=ind+1
-    for actuator in actuators:
-        dic[actuator]=[torch.tensor([state_arr[ind] for state_arr in state_arrs]), torch.tensor([state_arr[ind+len(actuators)] for state_arr in state_arrs])]
+    for sig in parameters+actuators:
+        dic[sig]=state_arrs[:,ind]
         ind=ind+1
     # in future could also return the next step values for actuators
     return dic

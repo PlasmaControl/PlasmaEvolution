@@ -20,7 +20,7 @@ class IanMLP(torch.nn.Module):
 class IanRNN(torch.nn.Module):
     def __init__(self, input_dim, output_dim,
                  encoder_dim=100, encoder_extra_layers=1,
-                 rnn_dim=100,
+                 rnn_dim=100, rnn_num_layers=1,
                  decoder_dim=100, decoder_extra_layers=1
                  ):
         super().__init__()
@@ -42,10 +42,34 @@ class IanRNN(torch.nn.Module):
             self.decoder.append(torch.nn.Linear(decoder_dim, decoder_dim))
             self.decoder.append(torch.nn.ReLU())
         self.decoder.append(torch.nn.Linear(decoder_dim, output_dim))
-    def forward(self, padded_input):
-        embedding=self.encoder(padded_input)
-        embedding_evolved,_=self.rnn(embedding)
-        padded_output=self.decoder(embedding_evolved)
+        self.rnn_num_layers=rnn_num_layers
+        self.rnn_dim=rnn_dim
+        self.output_dim=output_dim
+    def forward(self, padded_input, autoregression_probability=1, nwarmup=0):
+        if autoregression_probability<=0:
+            embedding=self.encoder(padded_input)
+            embedding_evolved,_=self.rnn(embedding)
+            padded_output=self.decoder(embedding_evolved)
+        else:
+            seq_len=padded_input.size()[-2]
+            padded_output=[]
+            autoregressed_input=padded_input[:,0,:].unsqueeze(1)
+            for t_ind in range(seq_len):
+                if (torch.rand(1).item() < autoregression_probability) and t_ind>nwarmup:
+                    embedding=self.encoder(autoregressed_input)
+                else:
+                    embedding=self.encoder(padded_input[:,t_ind,:].unsqueeze(1))
+                # note hidden state has both state and memory, (h,c)
+                # on first timestep initialize hidden state to 0 by not passing it in
+                if t_ind==0:
+                    embedding_evolved,hidden_state=self.rnn(embedding)
+                else:
+                    embedding_evolved,hidden_state=self.rnn(embedding,hidden_state)
+                this_output=self.decoder(embedding_evolved)
+                actuator_array=padded_input[:,t_ind,None,self.output_dim:]
+                autoregressed_input=torch.cat((this_output,actuator_array),dim=-1)
+                padded_output.append(this_output)
+            padded_output=torch.cat(padded_output, dim=1).squeeze(2)
         return padded_output
 
 class InverseLeakyReLU(torch.nn.Module):

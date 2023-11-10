@@ -33,7 +33,7 @@ class ModelStepper:
             normed_dic[sig]=torch.stack(normed_dic[sig])
         return dataSettings.get_denormalized_dic(normed_dic)
 
-def get_considered_models(config_filename, plot_ensemble=True):
+def get_considered_models(config_filename, ensemble=True):
     config=configparser.ConfigParser()
     config.read(config_filename)
     output_filename_base=config['model']['output_filename_base']
@@ -45,7 +45,7 @@ def get_considered_models(config_filename, plot_ensemble=True):
     state_length=len(profiles)*dataSettings.nx+len(parameters)
     actuator_length=len(actuators)
     considered_models=[]
-    if plot_ensemble:
+    if ensemble:
         all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}[0-9]*.tar'))
         # exclude models under the median loss
         losses = []
