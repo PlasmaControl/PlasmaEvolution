@@ -13,7 +13,9 @@ from train_helpers import make_bucket
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from dataSettings import state_to_dic, get_denormalized_dic
 
-bucket_size=5000
+import time
+
+bucket_size=10000
 ensemble=True
 fake_actuators=False
 nwarmup=0
@@ -51,6 +53,8 @@ running_num_samples=np.insert(np.cumsum([len(bucket) for bucket in test_x_bucket
 
 all_info={}
 all_keys=[]
+begin_time=time.time()
+prev_time=begin_time
 for sample_ind in range(len(x_test)):
     if fake_actuators:
         x_test[sample_ind]=prediction_helpers.get_fake_actuator_state(x_test[sample_ind], profiles, parameters, actuators)
@@ -61,7 +65,7 @@ for sample_ind in range(len(x_test)):
                          dataSettings.DT*1e3)
     start_time=true_times[0]
     end_time=true_times[-1]
-    key=f'{shots[sample_ind]}_{start_time}_{end_time}'
+    key=f'{shots[sample_ind]}_{int(start_time)}_{int(end_time)}'
     all_keys.append(key)
     all_info[key]={'truth': {'actuators': {}, 'profiles': {}, 'parameters': {}},
                    'predictions': {'profiles': {}, 'parameters': {}}}
@@ -85,6 +89,9 @@ for sample_ind in range(len(x_test)):
     for sig in profiles:
         all_info[key]['predictions']['profiles'][sig]=np.zeros((len(considered_models),num_times-nwarmup,dataSettings.nx))
 
+print(f'Finished writing ground truth, took {time.time()-prev_time:0.0f}s')
+evaluation_begin_time=time.time()
+prev_time=evaluation_begin_time
 with torch.no_grad():
     for which_bucket in range(len(test_x_buckets)):
         x_bucket=test_x_buckets[which_bucket]
@@ -108,6 +115,10 @@ with torch.no_grad():
                         all_info[key]['predictions']['profiles'][sig][which_model]=denormed_dic[sig]
                     elif sig in parameters:
                         all_info[key]['predictions']['parameters'][sig][which_model]=denormed_dic[sig]
+        print(f'Bucket {which_bucket+1}/{len(test_x_buckets)} took {time.time()-prev_time:0.0f}s')
+        prev_time=time.time()
 
+print(f"dumping to {pickle_filename}")
 with open(pickle_filename,'wb') as f:
     pickle.dump(all_info,f)
+print(f"Took {time.time()-begin_time:0.0f}s")

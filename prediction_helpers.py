@@ -60,7 +60,7 @@ def get_considered_models(config_filename, ensemble=True):
                                          **saved_state['model_hyperparams'])
                 model.load_state_dict(saved_state['model_state_dict'])
                 considered_models.append(model)
-        print(f'{len(considered_models)}/{len(all_model_files)} models used (i.e. only loss<{max_loss})')
+        print(f'{len(considered_models)}/{len(all_model_files)} models used (i.e. only loss<{max_loss:0.2e})')
     else:
         model_file=os.path.join(output_dir, f'{output_filename_base}.tar')
         saved_state=torch.load(model_file, map_location=torch.device('cpu'))

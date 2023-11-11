@@ -45,8 +45,10 @@ class IanRNN(torch.nn.Module):
         self.rnn_num_layers=rnn_num_layers
         self.rnn_dim=rnn_dim
         self.output_dim=output_dim
-    def forward(self, padded_input, autoregression_probability=1, nwarmup=0):
-        if autoregression_probability<=0:
+    # reset_probability is the probability we use the true input
+    # rather than autoregressed input for the next step
+    def forward(self, padded_input, reset_probability=0, nwarmup=0):
+        if reset_probability>=1:
             embedding=self.encoder(padded_input)
             embedding_evolved,_=self.rnn(embedding)
             padded_output=self.decoder(embedding_evolved)
@@ -55,7 +57,7 @@ class IanRNN(torch.nn.Module):
             padded_output=[]
             autoregressed_input=padded_input[:,0,:].unsqueeze(1)
             for t_ind in range(seq_len):
-                if (torch.rand(1).item() < autoregression_probability) and t_ind>nwarmup:
+                if (torch.rand(1).item() > reset_probability) and t_ind>nwarmup:
                     embedding=self.encoder(autoregressed_input)
                 else:
                     embedding=self.encoder(padded_input[:,t_ind,:].unsqueeze(1))

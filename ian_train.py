@@ -21,17 +21,21 @@ config=configparser.ConfigParser()
 config.read(config_filename)
 preprocessed_data_filenamebase=config['preprocess']['preprocessed_data_filenamebase']
 model_type=config['model']['model_type']
-bucket_size=int(config['optimization']['bucket_size'])
-n_epochs=int(config['optimization']['n_epochs'])
-lr=float(config['optimization']['lr'])
-lr_gamma=float(config['optimization']['lr_gamma'])
-lr_stop_epoch=int(config['optimization']['lr_stop_epoch'])
-early_saving=bool(config['optimization']['early_saving'])
-l1_lambda=float(config['optimization']['l1_lambda'])
-l2_lambda=float(config['optimization']['l2_lambda'])
+bucket_size=config['optimization'].getint('bucket_size')
+n_epochs=config['optimization'].getint('n_epochs')
+lr=config['optimization'].getfloat('lr')
+lr_gamma=config['optimization'].getfloat('lr_gamma')
+lr_stop_epoch=config['optimization'].getint('lr_stop_epoch')
+early_saving=config['optimization'].getboolean('early_saving')
+l1_lambda=config['optimization'].getfloat('l1_lambda')
+l2_lambda=config['optimization'].getfloat('l2_lambda')
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
+autoregression_num_steps=int(config['optimization'].get('autoregression_num_steps',1))
+if autoregression_num_steps<1:
+    autoregression_num_steps=1
+autoregression_start_epoch=int(n_epochs/2)
 
 model_hyperparams={key: int(val) for key,val in dict(config[model_type]).items()}
 
@@ -127,6 +131,13 @@ val_length_buckets = [[len(arr) for arr in bucket] for bucket in val_x_buckets]
 avg_train_losses=[]
 avg_val_losses=[]
 for epoch in range(n_epochs):
+    if epoch<=autoregression_start_epoch:
+        reset_probability=1
+    else:
+        avg_steps_slope=(1-autoregression_num_steps)/(n_epochs-autoregression_start_epoch)
+        avg_steps=avg_steps_slope*(n_epochs-(epoch+1))+autoregression_num_steps
+        reset_probability=1./avg_steps
+        print(f'Autoregression on, average timestep {avg_steps:0.1f}')
     model.train()
     train_losses=[]
     for which_bucket in torch.randperm(len(train_x_buckets)):
@@ -141,7 +152,7 @@ for epoch in range(n_epochs):
         padded_y=padded_y.to(device)
 
         optimizer.zero_grad()
-        model_output=model(padded_x)
+        model_output=model(padded_x,reset_probability=reset_probability)
         train_loss=masked_loss(loss_fn,
                                model_output, padded_y,
                                length_bucket)
@@ -174,14 +185,14 @@ for epoch in range(n_epochs):
             padded_y=pad_sequence(y_bucket, batch_first=True)
             padded_x=padded_x.to(device)
             padded_y=padded_y.to(device)
-            model_output = model(padded_x) #, length_bucket)
+            model_output = model(padded_x,reset_probability=reset_probability)
             val_loss = masked_loss(loss_fn,
                                    model_output, padded_y,
                                    length_bucket)
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
-    if early_saving and avg_val_losses[-1]==min(avg_val_losses):
+    if (not early_saving) or avg_val_losses[-1]==min(avg_val_losses):
         print(f"Checkpoint")
         torch.save({
             'epoch': epoch,
