@@ -32,16 +32,35 @@ l2_lambda=config['optimization'].getfloat('l2_lambda')
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
-autoregression_num_steps=int(config['optimization'].get('autoregression_num_steps',1))
-autoregression_start_epoch=int(config['optimization'].get('autoregression_start_epoch',int(n_epochs/4)))
-autoregression_end_epoch=int(config['optimization'].get('autoregression_end_epoch',int(3*n_epochs/4)))
+autoregression_num_steps=config['optimization'].getfloat('autoregression_num_steps',1)
+autoregression_start_epoch=config['optimization'].getint('autoregression_start_epoch',int(n_epochs/4))
+autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch',int(3*n_epochs/4))
 if autoregression_num_steps<1:
     autoregression_num_steps=1
+tune_model=config['model'].getboolean('tune_model',False)
+
+# epoch to start on, should be 0 generally but can increase w/ tune_model to restart a model that stopped halfway
+# at the moment, by default tune_model will start the epochs where the previous left off
+start_epoch=0
 
 model_hyperparams={key: int(val) for key,val in dict(config[model_type]).items()}
 
+state_length=len(profiles)*33+len(parameters)
+actuator_length=len(actuators)
+model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
+                         **model_hyperparams)
 # dump to same location as the config filename, with .tar instead of .cfg
-output_filename=os.path.join(config['model']['output_dir'],config['model']['output_filename_base']+".tar")
+output_filename=os.path.join(config['model']['output_dir'],f"{config['model']['output_filename_base']}.tar")
+# you probably want to use the same config file you had used for the original model, though you might swap
+# out signals like for data+sim
+if tune_model:
+    untuned_output_filename=os.path.join(config['model']['output_dir'],f"{config['model']['model_to_tune_filename_base']}.tar")
+    # note that if you run on a different computer, you might need map_location=torch.device('cpu') for loading
+    saved_state=torch.load(untuned_output_filename)
+    model.load_state_dict(saved_state['model_state_dict'])
+    # comment the below out if you want to restart from 0 epochs (e.g. for transfer learning)
+    start_epoch=saved_state['epoch']+1
+    print(f'Starting from model state stored in {untuned_output_filename}, from epoch {start_epoch}; saving new model to {output_filename}')
 
 print('Organizing train data from preprocessed_data')
 start_time=time.time()
@@ -55,11 +74,6 @@ x_val, y_val, shots, times = ian_dataset(preprocessed_data_filenamebase+'val.pkl
                                          profiles, actuators, parameters,
                                          sort_by_size=True)
 print(f'...took {(time.time()-start_time):0.2f}s')
-
-state_length=len(profiles)*33+len(parameters)
-actuator_length=len(actuators)
-model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
-                         **model_hyperparams)
 
 def masked_loss(loss_fn,
                 output, target,
@@ -76,12 +90,6 @@ def masked_loss(loss_fn,
 
 # I divide out by myself since different sequences/batches have different sizes
 loss_fn=torch.nn.MSELoss(reduction='sum')
-
-train_losses=[]
-val_losses=[]
-optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-#scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
-#scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
 
 print('Training...')
 if torch.cuda.is_available():
@@ -129,10 +137,18 @@ val_x_buckets = make_bucket(x_val, bucket_size)
 val_y_buckets = make_bucket(y_val, bucket_size)
 val_length_buckets = [[len(arr) for arr in bucket] for bucket in val_x_buckets]
 
-avg_train_losses=[]
-avg_val_losses=[]
-for epoch in range(n_epochs):
-    if epoch<=autoregression_start_epoch:
+optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+#scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
+#scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
+if tune_model:
+    optimizer.load_state_dict(saved_state['optimizer_state_dict'])
+    avg_train_losses=saved_state['train_losses']
+    avg_val_losses=saved_state['val_losses']
+else:
+    avg_train_losses=[]
+    avg_val_losses=[]
+for epoch in range(start_epoch, n_epochs):
+    if autoregression_num_steps<=1 or epoch<=autoregression_start_epoch:
         reset_probability=1
     else:
         if epoch>autoregression_end_epoch:
