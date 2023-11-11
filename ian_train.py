@@ -33,9 +33,10 @@ profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs']['parameters'].split()
 autoregression_num_steps=int(config['optimization'].get('autoregression_num_steps',1))
+autoregression_start_epoch=int(config['optimization'].get('autoregression_start_epoch',int(n_epochs/4)))
+autoregression_end_epoch=int(config['optimization'].get('autoregression_end_epoch',int(3*n_epochs/4)))
 if autoregression_num_steps<1:
     autoregression_num_steps=1
-autoregression_start_epoch=int(n_epochs/2)
 
 model_hyperparams={key: int(val) for key,val in dict(config[model_type]).items()}
 
@@ -134,8 +135,14 @@ for epoch in range(n_epochs):
     if epoch<=autoregression_start_epoch:
         reset_probability=1
     else:
-        avg_steps_slope=(1-autoregression_num_steps)/(n_epochs-autoregression_start_epoch)
-        avg_steps=avg_steps_slope*(n_epochs-(epoch+1))+autoregression_num_steps
+        if epoch>autoregression_end_epoch:
+            avg_steps=autoregression_num_steps
+        else:
+            y2=float(autoregression_num_steps)
+            y1=float(1)
+            x2=float(autoregression_end_epoch)
+            x1=float(autoregression_start_epoch)
+            avg_steps=(y2-y1)/(x2-x1) * (epoch-x1) + y1
         reset_probability=1./avg_steps
         print(f'Autoregression on, average timestep {avg_steps:0.1f}')
     model.train()
