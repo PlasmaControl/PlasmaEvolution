@@ -37,7 +37,7 @@ plotted_parameters=parameters
 appendage=''
 if fake_actuators:
     appendage+='_FAKE'
-pickle_filename=f"{output_filename_base}{appendage}.pkl"
+pickle_filename=f"testing_{output_filename_base}{appendage}.pkl"
 
 data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 
@@ -103,7 +103,7 @@ with torch.no_grad():
         # only save simulations after warmup is over
         for which_model in range(len(considered_models)):
             model=considered_models[which_model]
-            model_output=model(padded_x, autoregression_probability=1, nwarmup=nwarmup)[:,nwarmup:,:]
+            model_output=model(padded_x, reset_probability=0, nwarmup=nwarmup)[:,nwarmup:,:]
             unpadded_output=unpad_sequence(model_output, length_bucket, batch_first=True)
             for which_output,output in enumerate(unpadded_output):
                 # get the corresponding key
