@@ -77,7 +77,8 @@ max_shot=2000000
 val_indices=[np.random.randint(1,10)]
 test_indices=[0]
 
-train_shots=[187076, 191577] #[shot for shot in range(min_shot,max_shot) if shot%10 not in val_indices+test_indices]
+#train_shots=[187076, 191577]
+train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in val_indices+test_indices]
 val_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in val_indices]
 test_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in test_indices]
 
