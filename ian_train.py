@@ -39,14 +39,16 @@ autoregression_start_epoch=config['optimization'].getint('autoregression_start_e
 autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch',int(3*n_epochs/4))
 if autoregression_num_steps<1:
     autoregression_num_steps=1
-tune_model=config['tuning'].getboolean('tune_model',False)
-if tune_model:
-    if 'model_to_tune_filename_base' not in config['tuning']:
-        raise Exception("config['tuning']['tune_model'] set to true but no starting file specified in config['tuning']['model_to_tune_filename_base']")
-    model_to_tune_filename_base=config['tuning']['model_to_tune_filename_base']
-frozen_layers=config['tuning'].get('frozen_layers','').split()
-resume_training=config['tuning'].getboolean('resume_training',False)
-
+if 'tuning' in config:
+    tune_model=config['tuning'].getboolean('tune_model',False)
+    if tune_model:
+        if 'model_to_tune_filename_base' not in config['tuning']:
+            raise Exception("config['tuning']['tune_model'] set to true but no starting file specified in config['tuning']['model_to_tune_filename_base']")
+        model_to_tune_filename_base=config['tuning']['model_to_tune_filename_base']
+    frozen_layers=config['tuning'].get('frozen_layers','').split()
+    resume_training=config['tuning'].getboolean('resume_training',False)
+else:
+    tune_model=False
 # epoch to start on, should be 0 generally but can increase w/ tune_model to restart a model that stopped halfway
 # at the moment, by default tune_model will start the epochs where the previous left off
 start_epoch=0
