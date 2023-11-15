@@ -56,7 +56,7 @@ def get_considered_models(config_filename, ensemble=True):
         max_loss = np.median(losses)
         for model_file in all_model_files:
             saved_state=torch.load(model_file, map_location=torch.device('cpu'))
-            if saved_state['val_losses'][-1]<max_loss:
+            if np.min([saved_state['val_losses'][-i] for i in range(10)])<max_loss:
                 model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
                                          **saved_state['model_hyperparams'])
                 model.load_state_dict(saved_state['model_state_dict'])
