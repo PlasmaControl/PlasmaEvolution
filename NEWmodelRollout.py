@@ -17,7 +17,7 @@ from customDatasetMakers import state_to_dic
 import time
 
 bucket_size=10000
-ensemble=True
+ensemble=False
 fake_actuators=False
 nwarmup=0
 
@@ -38,7 +38,7 @@ plotted_parameters=parameters
 appendage=''
 if fake_actuators:
     appendage+='_FAKE'
-pickle_filename=f"testing_{output_filename_base}{appendage}.pkl"
+pickle_filename=f"rollout_{output_filename_base}{appendage}.pkl"
 
 data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 
@@ -104,7 +104,7 @@ with torch.no_grad():
         # only save simulations after warmup is over
         for which_model in range(len(considered_models)):
             model=considered_models[which_model]
-            model_output=model(padded_x, reset_probability=0, nwarmup=nwarmup)[:,nwarmup:,:]
+            model_output=model(padded_x, reset_probability=0, nwarmup=nwarmup)
             unpadded_output=unpad_sequence(model_output, length_bucket, batch_first=True)
             for which_output,output in enumerate(unpadded_output):
                 # get the corresponding key
@@ -113,9 +113,9 @@ with torch.no_grad():
                 denormed_dic=get_denormalized_dic(output_dic)
                 for sig in denormed_dic:
                     if sig in profiles:
-                        all_info[key]['predictions']['profiles'][sig][which_model]=denormed_dic[sig]
+                        all_info[key]['predictions']['profiles'][sig][which_model]=denormed_dic[sig][nwarmup:]
                     elif sig in parameters:
-                        all_info[key]['predictions']['parameters'][sig][which_model]=denormed_dic[sig]
+                        all_info[key]['predictions']['parameters'][sig][which_model]=denormed_dic[sig][nwarmup:]
         print(f'Bucket {which_bucket+1}/{len(test_x_buckets)} took {time.time()-prev_time:0.0f}s')
         prev_time=time.time()
 
