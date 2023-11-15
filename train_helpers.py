@@ -2,19 +2,21 @@ import torch
 
 def masked_loss(loss_fn,
                 output, target,
-                lengths):
-    mask = torch.zeros(len(lengths), max(lengths))
+                lengths,
+                nwarmup=0,
+                masked_indices=[]):
+    loss_fn=torch.nn.MSELoss(reduction='sum')
+    mask = torch.zeros_like(output) # nsamples, ntimes, nstates
     for i, length in enumerate(lengths):
-        mask[i, :length]=1
+        mask[i, nwarmup:length]=1
+    if len(masked_indices)>0:
+        mask[:,:,masked_indices]=0
     mask=mask.to(output.device)
-    output=output*mask[..., None]
-    target=target*mask[..., None]
+    output=output*mask
+    target=target*mask
     # normalize by dividing out true number of time samples in all batches
     # times the state size
     return loss_fn(output, target) / (sum(lengths)*output.size(-1))
-
-# I divide out by myself since different sequences/batches have different sizes
-loss_fn=torch.nn.MSELoss(reduction='sum')
 
 # make buckets of near-even size from a sorted array of arrays
 def make_bucket(arrays, bucket_size):

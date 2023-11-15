@@ -2,6 +2,7 @@ import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset
 from customModels import IanRNN, IanMLP, HiroLinear
+from train_helpers import make_bucket, masked_loss
 
 from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
 
@@ -22,6 +23,7 @@ config.read(config_filename)
 preprocessed_data_filenamebase=config['preprocess']['preprocessed_data_filenamebase']
 model_type=config['model']['model_type']
 bucket_size=config['optimization'].getint('bucket_size')
+nwarmup=config['optimization'].getint('nwarmup')
 n_epochs=config['optimization'].getint('n_epochs')
 lr=config['optimization'].getfloat('lr')
 lr_gamma=config['optimization'].getfloat('lr_gamma')
@@ -37,7 +39,13 @@ autoregression_start_epoch=config['optimization'].getint('autoregression_start_e
 autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch',int(3*n_epochs/4))
 if autoregression_num_steps<1:
     autoregression_num_steps=1
-tune_model=config['model'].getboolean('tune_model',False)
+tune_model=config['tuning'].getboolean('tune_model',False)
+if tune_model:
+    if 'model_to_tune_filename_base' not in config['tuning']:
+        raise Exception("config['tuning']['tune_model'] set to true but no starting file specified in config['tuning']['model_to_tune_filename_base']")
+    model_to_tune_filename_base=config['tuning']['model_to_tune_filename_base']
+frozen_layers=config['tuning'].get('frozen_layers','').split()
+resume_training=config['tuning'].getboolean('resume_training',False)
 
 # epoch to start on, should be 0 generally but can increase w/ tune_model to restart a model that stopped halfway
 # at the moment, by default tune_model will start the epochs where the previous left off
@@ -54,39 +62,31 @@ output_filename=os.path.join(config['model']['output_dir'],f"{config['model']['o
 # you probably want to use the same config file you had used for the original model, though you might swap
 # out signals like for data+sim
 if tune_model:
-    untuned_output_filename=os.path.join(config['model']['output_dir'],f"{config['model']['model_to_tune_filename_base']}.tar")
+    untuned_output_filename=os.path.join(config['model']['output_dir'],f"{model_to_tune_filename_base}.tar")
     # note that if you run on a different computer, you might need map_location=torch.device('cpu') for loading
     saved_state=torch.load(untuned_output_filename)
     model.load_state_dict(saved_state['model_state_dict'])
-    # comment the below out if you want to restart from 0 epochs (e.g. for transfer learning)
-    start_epoch=saved_state['epoch']+1
+    if resume_training:
+        start_epoch=saved_state['epoch']+1
     print(f'Starting from model state stored in {untuned_output_filename}, from epoch {start_epoch}; saving new model to {output_filename}')
+    for name, child in model.named_children():
+        if name in frozen_layers:
+            print(f"Freezing '{name}' layer for tuning procedure")
+            for param in child.parameters():
+                param.requires_grad = False
 
 print('Organizing train data from preprocessed_data')
 start_time=time.time()
 x_train, y_train, shots, times = ian_dataset(preprocessed_data_filenamebase+'train.pkl',
                                              profiles, actuators, parameters,
-                                             sort_by_size=True)
+                                             sort_by_size=True, min_sample_length=2*nwarmup)
 print(f'...took {(time.time()-start_time):0.2f}s')
 print('Organizing validation data from preprocessed_data')
 start_time=time.time()
 x_val, y_val, shots, times = ian_dataset(preprocessed_data_filenamebase+'val.pkl',
                                          profiles, actuators, parameters,
-                                         sort_by_size=True)
+                                         sort_by_size=True, min_sample_length=2*nwarmup)
 print(f'...took {(time.time()-start_time):0.2f}s')
-
-def masked_loss(loss_fn,
-                output, target,
-                lengths):
-    mask = torch.zeros(len(lengths), max(lengths))
-    for i, length in enumerate(lengths):
-        mask[i, :length]=1
-    mask=mask.to(output.device)
-    output=output*mask[..., None]
-    target=target*mask[..., None]
-    # normalize by dividing out true number of time samples in all batches
-    # times the state size
-    return loss_fn(output, target) / (sum(lengths)*output.size(-1))
 
 # I divide out by myself since different sequences/batches have different sizes
 loss_fn=torch.nn.MSELoss(reduction='sum')
@@ -112,23 +112,6 @@ print('model size: {:.3f}MB'.format(size_all_mb))
 start_time=time.time()
 prev_time=start_time
 
-# make buckets of near-even size from a sorted array of arrays
-def make_bucket(arrays, bucket_size):
-    buckets=[]
-    current_bucket=[]
-    current_len=0
-    for arr in arrays:
-        arr_len=len(arr)
-        current_bucket.append(arr)
-        current_len+=arr_len
-        if current_len > bucket_size:
-            buckets.append(current_bucket)
-            current_bucket=[]
-            current_len=0
-    if len(current_bucket)>0:
-        buckets.append(current_bucket)
-    return buckets
-
 train_x_buckets = make_bucket(x_train, bucket_size)
 train_y_buckets = make_bucket(y_train, bucket_size)
 train_length_buckets = [[len(arr) for arr in bucket] for bucket in train_x_buckets]
@@ -137,11 +120,13 @@ val_x_buckets = make_bucket(x_val, bucket_size)
 val_y_buckets = make_bucket(y_val, bucket_size)
 val_length_buckets = [[len(arr) for arr in bucket] for bucket in val_x_buckets]
 
-optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+# apply filter to handle case of freezing layers (happens above) for model tuning
+optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-5)
 #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
 #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
 if tune_model:
-    optimizer.load_state_dict(saved_state['optimizer_state_dict'])
+    if resume_training:
+        optimizer.load_state_dict(saved_state['optimizer_state_dict'])
     avg_train_losses=saved_state['train_losses']
     avg_val_losses=saved_state['val_losses']
 else:
@@ -175,7 +160,7 @@ for epoch in range(start_epoch, n_epochs):
         padded_y=padded_y.to(device)
 
         optimizer.zero_grad()
-        model_output=model(padded_x,reset_probability=reset_probability)
+        model_output=model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
         train_loss=masked_loss(loss_fn,
                                model_output, padded_y,
                                length_bucket)
@@ -208,7 +193,7 @@ for epoch in range(start_epoch, n_epochs):
             padded_y=pad_sequence(y_bucket, batch_first=True)
             padded_x=padded_x.to(device)
             padded_y=padded_y.to(device)
-            model_output = model(padded_x,reset_probability=reset_probability)
+            model_output = model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
             val_loss = masked_loss(loss_fn,
                                    model_output, padded_y,
                                    length_bucket)
@@ -229,7 +214,6 @@ for epoch in range(start_epoch, n_epochs):
             'actuators': actuators,
             'parameters': parameters,
             'model_hyperparams': model_hyperparams,
-            #'space_inds': space_inds,
             'exclude_ech': True
         }, output_filename)
     prev_time=time.time()
