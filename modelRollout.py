@@ -8,6 +8,7 @@ import sys
 import prediction_helpers
 import plotting_helpers
 import pickle
+from customDatasetMakers import state_to_dic
 
 plot=True
 dump_pickle=False
@@ -69,7 +70,7 @@ for sample_ind in range(len(x_test)):
 
     predicted_means, predicted_stds = prediction_helpers.get_predictions(normalized_true_state[sim_start_ind:], considered_models, profiles, parameters, nwarmup=nwarmup)
 
-    normalized_true_dic=dataSettings.state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
+    normalized_true_dic=state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
     for sig in normalized_true_dic:
         normalized_true_dic[sig]=torch.stack(normalized_true_dic[sig])
     denormalized_true_dic=dataSettings.get_denormalized_dic(normalized_true_dic)

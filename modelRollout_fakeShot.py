@@ -15,6 +15,7 @@ import os
 import glob
 import sys
 from customModels import IanRNN, IanMLP, HiroLinear
+from customDatasetMakers import dic_to_state, state_to_dic
 
 sample_ind=5
 
@@ -119,19 +120,19 @@ class ModelStepper:
             input_tensor=torch.cat((self.all_predictions[which_model],actuator_array))
             self.all_predictions[which_model]=model(input_tensor[None,:])[0]
     def get_denormed_predictions(self):
-        normed_dic=dataSettings.state_to_dic(self.all_predictions, profiles=profiles, parameters=parameters)
+        normed_dic=state_to_dic(self.all_predictions, profiles=profiles, parameters=parameters)
         for sig in normed_dic:
             normed_dic[sig]=torch.stack(normed_dic[sig])
         return dataSettings.get_denormalized_dic(normed_dic)
 
 #change real to fake actuator
 normalized_true_state=x_test[sample_ind]
-normalized_true_dic=dataSettings.state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
+normalized_true_dic=state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
 fake_actuator_name='D_tot'
 arr = normalized_true_dic[fake_actuator_name][0]
 fake_actuator = torch.tensor([((np.sin(2*np.pi*i/len(arr))) ** 2)*torch.max(arr) for i in range(len(arr))])
 normalized_true_dic[fake_actuator_name][0] = fake_actuator
-x_test[sample_ind] = dataSettings.dic_to_state(normalized_true_dic, profiles, parameters, actuators=actuators)
+x_test[sample_ind] = dic_to_state(normalized_true_dic, profiles, parameters, actuators=actuators)
 
 shot=shots[sample_ind]
 start_time=times[sample_ind]
@@ -170,7 +171,7 @@ NSTEPS_PLOTTED=3
 colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
 plotted_time_inds=[int(t) for t in np.linspace(0, time_length, NSTEPS_PLOTTED, endpoint=False)]
 normalized_true_state=x_test[sample_ind]
-normalized_true_dic=dataSettings.state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
+normalized_true_dic=state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
 for sig in normalized_true_dic:
     normalized_true_dic[sig]=torch.stack(normalized_true_dic[sig])
 denormalized_true_dic=dataSettings.get_denormalized_dic(normalized_true_dic)

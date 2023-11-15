@@ -7,6 +7,8 @@ import sys
 import prediction_helpers
 import matplotlib.pyplot as plt
 
+from customDatasetMakers import state_to_dic
+
 config_list = ['/projects/EKOLEMEN/profile_predictor/joe_hiro_models/YesGasNoDenconfig']
 preprocessed_data = '/projects/EKOLEMEN/profile_predictor/joe_hiro_models/preprocessed_diiid_data_highip_val.pkl'
 
@@ -31,7 +33,7 @@ def loss_calculator(configs_list, data_filename):
             x_test = x_test[0::(len(x_test)//100)]
         total_time = np.sum([len(x_test[i]) for i in range(len(x_test))])
         for normalized_true_state in x_test:
-            normalized_true_dic=dataSettings.state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
+            normalized_true_dic=state_to_dic(normalized_true_state, profiles=profiles, parameters=parameters, actuators=actuators)
             for sig in normalized_true_dic:
                 normalized_true_dic[sig]=torch.stack(normalized_true_dic[sig])
             denormalized_true_dic=dataSettings.get_denormalized_dic(normalized_true_dic)

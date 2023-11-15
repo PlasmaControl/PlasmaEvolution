@@ -241,7 +241,6 @@ def preprocess_shot_times(processed_data_filename,
     with open(processed_data_filename, 'wb') as f:
         pickle.dump(processed_data,f)
 
-
 def ian_dataset(processed_data_filename,
                 profiles, actuators, parameters,
                 min_sample_length=6,
@@ -263,6 +262,7 @@ def ian_dataset(processed_data_filename,
         for parameter in parameters:
             in_timeslice.append(processed_data[parameter][processed_sample_ind][0])
             out_timeslice.append(processed_data[parameter][processed_sample_ind][-1])
+        # in future can have this be a loop over lookahead
         for actuator in actuators:
             in_timeslice.append(processed_data[actuator][processed_sample_ind][0])
         for actuator in actuators:
@@ -288,3 +288,49 @@ def ian_dataset(processed_data_filename,
         shots = [shots[i] for i in sorted_indices]
         times = [times[i] for i in sorted_indices]
     return in_samples, out_samples, shots, times
+
+# made to be consistent with ian_dataset, double check it matches the above
+# returns a dictionary corresponding to the indices occupied by each signal
+def get_state_indices_dic(profiles, parameters, actuators=[], nx=dataSettings.nx, lookahead=1):
+    indices_dic={actuator: [] for actuator in actuators}
+    ind,next_ind=0,0
+    for profile in profiles:
+        next_ind=ind+nx
+        indices_dic[profile]=list(range(ind,next_ind))
+        ind=next_ind
+    for sig in parameters:
+        indices_dic[sig]=ind
+        ind=ind+1
+    for lookahead in range(lookahead+1):
+        for sig in actuators:
+            indices_dic[sig].append(ind)
+            ind=ind+1
+    return indices_dic
+
+# actuators is [] since the output state only has profiles and parameters,
+# but the input state has actuators at t and t+1 also
+# if only one state, wrap it like state_arrs=[state_arr] to call this fxn
+def state_to_dic(state_arrs, profiles, parameters, actuators=[], nx=dataSettings.nx):
+    indices_dic=get_state_indices_dic(profiles, parameters, actuators, nx=nx)
+    state_arrs=np.array(state_arrs)
+    num_states=len(state_arrs)
+    dic={}
+    for sig in parameters+profiles+actuators:
+        dic[sig]=state_arrs[...,indices_dic[sig]]
+    return dic
+
+def dic_to_state(dic, profiles, parameters, actuators=[], nx=dataSettings.nx):
+    for sig in dic:
+        dic[sig]=torch.tensor(dic[sig]).to(torch.float)
+    dims=dic[profiles[0]].size()
+    if len(dims)>1:
+        num_states=dims[0]
+        state_length=dims[1]*len(profiles)+len(parameters)+len(actuators)*2
+        state_arrs=torch.zeros((num_states,state_length))
+    else:
+        state_length=dims[0]*len(profiles)+len(parameters)+len(actuators)*2
+        state_arrs=torch.zeros(state_length)
+    indices_dic=get_state_indices_dic(profiles, parameters, actuators, nx=nx)
+    for sig in indices_dic:
+        state_arrs[...,indices_dic[sig]]=dic[sig]
+    return state_arrs

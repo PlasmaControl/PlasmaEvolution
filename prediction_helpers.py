@@ -6,6 +6,7 @@ import numpy as np
 import os
 import glob
 from customModels import IanRNN, IanMLP, HiroLinear
+from customDatasetMakers import state_to_dic, dic_to_state
 
 models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLinear': HiroLinear}
 
@@ -28,7 +29,7 @@ class ModelStepper:
             input_tensor=torch.cat((self.all_predictions[which_model],actuator_array))
             self.all_predictions[which_model]=model(input_tensor[None,:])[0]
     def get_denormed_predictions(self):
-        normed_dic=dataSettings.state_to_dic(self.all_predictions, profiles=self.profiles, parameters=self.parameters)
+        normed_dic=state_to_dic(self.all_predictions, profiles=self.profiles, parameters=self.parameters)
         for sig in normed_dic:
             normed_dic[sig]=torch.stack(normed_dic[sig])
         return dataSettings.get_denormalized_dic(normed_dic)
@@ -112,7 +113,7 @@ def get_predictions_per_model(normalized_true_state, considered_models, profiles
 
 def get_fake_actuator_state(normalized_true_state, profiles, parameters, actuators):
     fake_actuator_state=normalized_true_state.clone()
-    fake_actuator_dic=dataSettings.state_to_dic(fake_actuator_state, profiles=profiles, parameters=parameters, actuators=actuators)
+    fake_actuator_dic=state_to_dic(fake_actuator_state, profiles=profiles, parameters=parameters, actuators=actuators)
     for actuator in actuators:
         arr = fake_actuator_dic[actuator][0]
         freeze_index = len(arr)//2 - 40
@@ -123,5 +124,5 @@ def get_fake_actuator_state(normalized_true_state, profiles, parameters, actuato
             perturb_index = len(arr)//2 + 30
             perturb_length = 30
             arr[perturb_index:perturb_index + perturb_length] = torch.tensor([((np.sin(np.pi*i/perturb_length))*arr[perturb_index] + arr[perturb_index]) for i in range(perturb_length)])
-    fake_actuator_state = dataSettings.dic_to_state(fake_actuator_dic, profiles, parameters, actuators=actuators)
+    fake_actuator_state = dic_to_state(fake_actuator_dic, profiles, parameters, actuators=actuators)
     return fake_actuator_state
