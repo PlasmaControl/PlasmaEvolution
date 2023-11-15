@@ -1,6 +1,7 @@
 import unittest
 import torch
 from customDatasetMakers import get_state_indices_dic, state_to_dic, dic_to_state
+from train_helpers import get_mask, masked_loss
 import numpy as np
 
 class TestStateDicConversions(unittest.TestCase):
@@ -51,6 +52,46 @@ class TestStateDicConversions(unittest.TestCase):
         print(start_state)
         print(end_state)
         self.assertTrue(np.allclose(start_state,end_state))
+
+class TestTrainHelpers(unittest.TestCase):
+    def test_mask(self):
+        shape=(2,6,3)
+        lengths=[6,4]
+        nwarmup=2
+        masked_indices=[0,2]
+        mask=get_mask(shape, lengths, nwarmup, masked_indices=masked_indices)
+        truth=torch.Tensor([[[0,0,0], #first sample
+                             [0,0,0],   #timesteps in sample
+                             [0,1,0],      #state elements in timestep
+                             [0,1,0],
+                             [0,1,0],
+                             [0,1,0]],
+                            [[0,0,0], #second sample
+                             [0,0,0],
+                             [0,1,0],
+                             [0,1,0],
+                             [0,0,0],
+                             [0,0,0]]])
+        self.assertTrue(np.allclose(truth,mask))
+        output=torch.Tensor([[[1,2,3], #first sample
+                              [1,2,3],   #timesteps in sample
+                              [1,10,3],      #state elements in timestep
+                              [1,10,3],
+                              [1,10,3],
+                              [1,10,3]],
+                             [[1,2,3], #second sample
+                              [1,2,3],
+                              [1,10,3],
+                              [1,10,3],
+                              [1,2,3],
+                              [1,2,3]]])
+        target=torch.zeros_like(output)
+        loss=masked_loss(torch.nn.MSELoss(reduction='sum'),
+                         output,target,
+                         lengths=lengths,
+                         nwarmup=nwarmup,
+                         masked_indices=masked_indices)
+        self.assertEqual(loss,100)
 
 if __name__ == '__main__':
     unittest.main()

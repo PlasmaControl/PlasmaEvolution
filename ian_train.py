@@ -1,6 +1,6 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
-from customDatasetMakers import preprocess_data, ian_dataset
+from customDatasetMakers import preprocess_data, ian_dataset, get_state_indices_dic
 from customModels import IanRNN, IanMLP, HiroLinear
 from train_helpers import make_bucket, masked_loss
 
@@ -39,7 +39,8 @@ autoregression_start_epoch=config['optimization'].getint('autoregression_start_e
 autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch',int(3*n_epochs/4))
 if autoregression_num_steps<1:
     autoregression_num_steps=1
-if 'tuning' in config:
+# temporary to maintain back-compatibility
+if config.has_section('config'):
     tune_model=config['tuning'].getboolean('tune_model',False)
     if tune_model:
         if 'model_to_tune_filename_base' not in config['tuning']:
@@ -47,15 +48,17 @@ if 'tuning' in config:
         model_to_tune_filename_base=config['tuning']['model_to_tune_filename_base']
     frozen_layers=config['tuning'].get('frozen_layers','').split()
     resume_training=config['tuning'].getboolean('resume_training',False)
+    masked_outputs=config['tuning'].get('masked_outputs','').split()
 else:
     tune_model=False
+    masked_indices=[]
 # epoch to start on, should be 0 generally but can increase w/ tune_model to restart a model that stopped halfway
 # at the moment, by default tune_model will start the epochs where the previous left off
 start_epoch=0
 
 model_hyperparams={key: int(val) for key,val in dict(config[model_type]).items()}
 
-state_length=len(profiles)*33+len(parameters)
+state_length=len(profiles)*nx+len(parameters)
 actuator_length=len(actuators)
 model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
                          **model_hyperparams)
@@ -76,21 +79,27 @@ if tune_model:
             print(f"Freezing '{name}' layer for tuning procedure")
             for param in child.parameters():
                 param.requires_grad = False
+    indices_dic=get_state_indices_dic(profiles, parameters, actuators)
+    masked_indices=[]
+    for sig in masked_outputs:
+        masked_indices+=indices_dic[sig]
 
+min_sample_length=max(2*nwarmup,6)
 print('Organizing train data from preprocessed_data')
 start_time=time.time()
 x_train, y_train, shots, times = ian_dataset(preprocessed_data_filenamebase+'train.pkl',
                                              profiles, actuators, parameters,
-                                             sort_by_size=True, min_sample_length=2*nwarmup)
+                                             sort_by_size=True, min_sample_length=min_sample_length)
 print(f'...took {(time.time()-start_time):0.2f}s')
 print('Organizing validation data from preprocessed_data')
 start_time=time.time()
 x_val, y_val, shots, times = ian_dataset(preprocessed_data_filenamebase+'val.pkl',
                                          profiles, actuators, parameters,
-                                         sort_by_size=True, min_sample_length=2*nwarmup)
+                                         sort_by_size=True, min_sample_length=min_sample_length)
 print(f'...took {(time.time()-start_time):0.2f}s')
 
 # I divide out by myself since different sequences/batches have different sizes
+# see train_helpers.py
 loss_fn=torch.nn.MSELoss(reduction='sum')
 
 print('Training...')
@@ -126,9 +135,8 @@ val_length_buckets = [[len(arr) for arr in bucket] for bucket in val_x_buckets]
 optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-5)
 #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
 #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
-if tune_model:
-    if resume_training:
-        optimizer.load_state_dict(saved_state['optimizer_state_dict'])
+if tune_model and resume_training:
+    optimizer.load_state_dict(saved_state['optimizer_state_dict'])
     avg_train_losses=saved_state['train_losses']
     avg_val_losses=saved_state['val_losses']
 else:
@@ -165,7 +173,8 @@ for epoch in range(start_epoch, n_epochs):
         model_output=model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
         train_loss=masked_loss(loss_fn,
                                model_output, padded_y,
-                               length_bucket)
+                               length_bucket, nwarmup=nwarmup,
+                               masked_indices=masked_indices)
         # L1 regularization
         '''l1_reg = torch.tensor(0.0, device=device)
         for param in model.parameters():
@@ -198,7 +207,8 @@ for epoch in range(start_epoch, n_epochs):
             model_output = model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
             val_loss = masked_loss(loss_fn,
                                    model_output, padded_y,
-                                   length_bucket)
+                                   length_bucket, nwarmup=nwarmup,
+                                   masked_indices=masked_indices)
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
