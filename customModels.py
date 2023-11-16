@@ -21,7 +21,8 @@ class IanRNN(torch.nn.Module):
     def __init__(self, input_dim, output_dim,
                  encoder_dim=100, encoder_extra_layers=1,
                  rnn_dim=100, rnn_num_layers=1,
-                 decoder_dim=100, decoder_extra_layers=1
+                 decoder_dim=100, decoder_extra_layers=1,
+                 rnn_type='lstm'
                  ):
         super().__init__()
         self.encoder = torch.nn.Sequential()
@@ -31,10 +32,14 @@ class IanRNN(torch.nn.Module):
             self.encoder.append(torch.nn.Linear(encoder_dim, encoder_dim))
             self.encoder.append(torch.nn.ReLU())
         # batch_size x time_length x input_dim
-        self.rnn=torch.nn.LSTM(
-            encoder_dim, rnn_dim,
-            batch_first=True
-        )
+        self.rnn_type=rnn_type
+        if self.rnn_type=='lstm':
+            self.rnn=torch.nn.LSTM(
+                encoder_dim, rnn_dim,
+                batch_first=True
+            )
+        elif self.rnn_type=='linear':
+            self.rnn=torch.nn.Linear(encoder_dim, rnn_dim)
         self.decoder = torch.nn.Sequential()
         self.decoder.append(torch.nn.Linear(rnn_dim, decoder_dim))
         self.decoder.append(torch.nn.ReLU())
@@ -47,31 +52,48 @@ class IanRNN(torch.nn.Module):
         self.output_dim=output_dim
     # reset_probability is the probability we use the true input
     # rather than autoregressed input for the next step
+    # nwarmup is number of steps for which it won't autoregress
+    # padded_input is like (nsamples, ntimes, nstates)
     def forward(self, padded_input, reset_probability=0, nwarmup=0):
+        # inference without autoregression (20x faster)
         if reset_probability>=1:
             embedding=self.encoder(padded_input)
-            embedding_evolved,_=self.rnn(embedding)
+            if self.rnn_type=='lstm':
+                embedding_evolved,_=self.rnn(embedding)
+            else:
+                embedding_evolved=self.rnn(embedding)
             padded_output=self.decoder(embedding_evolved)
+        # inference with probabilistic autoregression
         else:
+            # number of times
             seq_len=padded_input.size()[-2]
-            padded_output=[]
-            autoregressed_input=padded_input[:,0,:].unsqueeze(1)
+            # padded_output dim is padded_input without actuator chunk
+            padded_output=torch.zeros(padded_input[:,:,:self.output_dim].size())
+            # maintain previous output for autoregression (start at true t=0 state)
+            prev_output=padded_input[:,0,:self.output_dim].unsqueeze(1)
             for t_ind in range(seq_len):
-                if (torch.rand(1).item() > reset_probability) and t_ind>nwarmup:
-                    embedding=self.encoder(autoregressed_input)
+                if (t_ind<=nwarmup) or (torch.rand(1).item() < reset_probability):
+                    # predict from true state (don't autoregress this timestep)
+                    this_input=padded_input[:,t_ind,:].unsqueeze(1)
                 else:
-                    embedding=self.encoder(padded_input[:,t_ind,:].unsqueeze(1))
+                    # autoregress: use previous output with actuators
+                    actuator_array=padded_input[:,t_ind,self.output_dim:].unsqueeze(1)
+                    this_input=torch.cat((prev_output,actuator_array),dim=-1)
+                ####### EVOLVE THE STATE
+                embedding=self.encoder(this_input)
                 # note hidden state has both state and memory, (h,c)
                 # on first timestep initialize hidden state to 0 by not passing it in
-                if t_ind==0:
-                    embedding_evolved,hidden_state=self.rnn(embedding)
+                if self.rnn_type=='lstm':
+                    if t_ind==0:
+                        embedding_evolved,hidden_state=self.rnn(embedding)
+                    else:
+                        embedding_evolved,hidden_state=self.rnn(embedding,hidden_state)
                 else:
-                    embedding_evolved,hidden_state=self.rnn(embedding,hidden_state)
+                    embedding_evolved=self.rnn(embedding)
                 this_output=self.decoder(embedding_evolved)
-                actuator_array=padded_input[:,t_ind,None,self.output_dim:]
-                autoregressed_input=torch.cat((this_output,actuator_array),dim=-1)
-                padded_output.append(this_output)
-            padded_output=torch.cat(padded_output, dim=1).squeeze(2)
+                ####### SAVE THE OUTPUT
+                prev_output = this_output
+                padded_output[:,t_ind,:] = prev_output.squeeze(1)
         return padded_output
 
 class InverseLeakyReLU(torch.nn.Module):

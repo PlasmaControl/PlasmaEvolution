@@ -3,6 +3,7 @@ import torch
 import os
 from customDatasetMakers import get_state_indices_dic, state_to_dic, dic_to_state, \
     preprocess_data
+from customModels import IanRNN
 from train_helpers import get_mask, masked_loss
 import numpy as np
 
@@ -128,6 +129,49 @@ class TestTrainHelpers(unittest.TestCase):
                          nwarmup=nwarmup,
                          masked_indices=masked_indices)
         self.assertEqual(loss,100)
+
+class TestModels(unittest.TestCase):
+    def test_ian_rnn(self):
+        state_length=2
+        actuator_length=1
+        # 4 total inputs going in
+        model=IanRNN(input_dim=state_length+2*actuator_length, output_dim=state_length,
+                     encoder_dim=1, encoder_extra_layers=0,
+                     rnn_dim=1, rnn_num_layers=1,
+                     decoder_dim=1, decoder_extra_layers=0,
+                     rnn_type='linear')
+        # by setting all weights and biases to 1, should be like
+        # [1,...,1]*x + 1 "encoder" layer
+        # 1*x + 1 "rnn" (really linear here) layer
+        # 1*x + 1 "decoder" layer
+        # [1,...,1]*x + [1,...,1] final layer (also part of "decoder")
+        for name, param in model.named_parameters():
+            # Just an example
+            if 'weight' in name:
+                param.data = torch.ones_like(param)
+            elif 'bias' in name:
+                param.data = torch.ones_like(param)
+        test_input=torch.ones((2,2,4))
+        test_input[:,-1,-1]=2
+        desired_output=torch.ones((2,2,2)) # [8,8]
+        desired_output[:,0,:]*=8
+        desired_output[:,1,:]*=9
+        model_output=model(test_input,reset_probability=1)
+        self.assertTrue(torch.allclose(model_output,desired_output))
+        desired_output=torch.ones((2,2,2))
+        desired_output[:,0,:]*=8
+        desired_output[:,1,:]*=23
+        model_output=model(test_input,reset_probability=0)
+        self.assertTrue(torch.allclose(model_output,desired_output))
+        # test rnn works
+        model=IanRNN(input_dim=state_length+2*actuator_length, output_dim=state_length,
+                     encoder_dim=10, encoder_extra_layers=0,
+                     rnn_dim=12, rnn_num_layers=1,
+                     decoder_dim=13, decoder_extra_layers=0,
+                     rnn_type='lstm')
+        # check that lstm works at all (don't have a careful test for output correctness)
+        model(test_input,reset_probability=0)
+        model(test_input,reset_probability=1)
 
 if __name__ == '__main__':
     unittest.main()
