@@ -1,8 +1,44 @@
 import unittest
 import torch
-from customDatasetMakers import get_state_indices_dic, state_to_dic, dic_to_state
+import os
+from customDatasetMakers import get_state_indices_dic, state_to_dic, dic_to_state, \
+    preprocess_data
 from train_helpers import get_mask, masked_loss
 import numpy as np
+
+# takes ~90 seconds the first time then faster after (I think h5 unravels itself like DNA / histones)
+class TestPreprocessedData(unittest.TestCase):
+    def test_ech_exclusion(self):
+        data_filename='/projects/EKOLEMEN/profile_predictor/joe_hiro_models/diiid_data.h5'
+        profiles=['zipfit_etempfit_rho']
+        scalars=['ech_pwr_total']
+        # 152621 is an ECH shot, 163303 is not
+        shots=[152621,163303]
+        preprocessed_data=preprocess_data(None,
+                                          data_filename,profiles,scalars,
+                                          shots=shots,lookahead=1,
+                                          exclude_ech=False,
+                                          zero_fill_signals=['ech_pwr_total'])
+        returned_shots=np.unique(preprocessed_data['shotnum'])
+        for shot in shots:
+            self.assertIn(shot,returned_shots)
+        self.assertTrue(np.allclose(preprocessed_data['ech_pwr_total'][preprocessed_data['shotnum']==163303],0))
+        self.assertFalse(np.allclose(preprocessed_data['ech_pwr_total'][preprocessed_data['shotnum']==152621],0))
+        preprocessed_data=preprocess_data(None,
+                                          data_filename,profiles,scalars,
+                                          shots=shots,lookahead=1,
+                                          exclude_ech=True,
+                                          zero_fill_signals=['ech_pwr_total'])
+        returned_shots=np.unique(preprocessed_data['shotnum'])
+        self.assertNotIn(152621,returned_shots)
+        self.assertIn(163303,returned_shots)
+        preprocessed_data=preprocess_data(None,
+                                          data_filename,profiles,scalars,
+                                          shots=shots,lookahead=1,
+                                          exclude_ech=False)
+        returned_shots=np.unique(preprocessed_data['shotnum'])
+        self.assertIn(152621,returned_shots)
+        self.assertIn(163303,returned_shots)
 
 class TestStateDicConversions(unittest.TestCase):
     def assert_numpy_dictionaries_equal(self, first_dic, second_dic):

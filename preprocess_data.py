@@ -14,15 +14,18 @@ config=configparser.ConfigParser()
 config.read(config_filename)
 raw_data_filename=config['preprocess']['raw_data_filename']
 preprocessed_data_filenamebase=config['preprocess']['preprocessed_data_filenamebase']
-ip_minimum=float(config['preprocess']['ip_minimum'])
-ip_maximum=float(config['preprocess']['ip_maximum'])
-lookahead=int(config['preprocess']['lookahead'])
+ip_minimum=config['preprocess'].getfloat('ip_minimum')
+ip_maximum=config['preprocess'].getfloat('ip_maximum')
+lookahead=config['preprocess'].getint('lookahead')
 profiles=config['preprocess']['profiles_superset'].split()
 scalars=config['preprocess']['scalars_superset'].split()
+zero_fill_signals=config['preprocess'].get('zero_fill_signals','').split()
+exclude_ech=config['preprocess'].getboolean('exclude_ech',True)
 
 datasetParams={'raw_data_filename': raw_data_filename, 'profiles': profiles, 'scalars': scalars,
                'lookahead': lookahead,
-               'ip_minimum': ip_minimum, 'ip_maximum': ip_maximum}
+               'ip_minimum': ip_minimum, 'ip_maximum': ip_maximum,
+               'zero_fill_signals': zero_fill_signals, 'exclude_ech': exclude_ech}
 
 # useful for testing
 if False:

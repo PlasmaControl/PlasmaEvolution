@@ -55,7 +55,8 @@ normalizations={
     'Ar_tot': {'mean': 0, 'std': 1e2},
     'Ne_tot': {'mean': 0, 'std': 1e2},
     'He_tot': {'mean': 0, 'std': 1e2},
-    'N_tot': {'mean': 0, 'std': 1e2}
+    'N_tot': {'mean': 0, 'std': 1e2},
+    'ech_pwr_total': {'mean': 0, 'std': 1e6}
     }
 
 clipped_signals={

@@ -8,12 +8,13 @@ import dataSettings
 
 verbose=False
 
-def profiles_ok(profiles):
+def profiles_ok(profiles, remove_all_zero_profiles=True):
     if np.isnan(profiles).any():
         return False
     # also remove if profile is all 0 spatially
-    if not np.sum(np.abs(profiles),axis=-1).all():
-        return False
+    if remove_all_zero_profiles:
+        if not np.sum(np.abs(profiles),axis=-1).all():
+            return False
     return True
 def scalars_ok(scalars):
     if np.isnan(scalars).any():
@@ -37,14 +38,21 @@ def check_signal_off(signal, threshold=0.1):
 # sql=OMFITrdb(query,db='d3drdb',server='d3drdb',by_column=True)
 # runs=list(set(sql['run']))
 # print(str(runs))
+
+# also note zero_fill_signals won't have outliers excluded
 def preprocess_data(processed_data_filename,
                     raw_data_filename,profiles,scalars,
                     shots=None,lookahead=1,
                     ip_minimum=None,ip_maximum=None,
                     excluded_runs=[],exclude_ech=True, exclude_ich=True,
-                    max_num_shots=np.inf):
-    print(f'Building dataset {processed_data_filename}...')
+                    max_num_shots=np.inf,
+                    zero_fill_signals=[]):
+    if processed_data_filename is not None:
+        print(f'Building dataset {processed_data_filename}...')
+    else:
+        print(f'Building dataset to return (not to dump to file)')
     start_time=time.time()
+    remove_all_zero_profiles=not any([profile in zero_fill_signals for profile in profiles])
     with h5py.File(raw_data_filename,'r') as f:
         times=f['times'][:]
         processed_data={key: [] for key in profiles+scalars+['shotnum','times']}
@@ -65,12 +73,16 @@ def preprocess_data(processed_data_filename,
             if verbose:
                 print(shot)
             keys_exist=False
-            if np.all([key in f[shot].keys() for key in profiles+scalars]):
-                normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
+            needed_signals=profiles+scalars
+            for sig in zero_fill_signals:
+                if sig in needed_signals:
+                    needed_signals.remove(sig)
+            if np.all([key in f[shot].keys() for key in needed_signals]):
+                normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in needed_signals})
                 keys_exist=True
             if keys_exist:
                 within_deviation=True
-                for signal in profiles+scalars:
+                for signal in needed_signals:
                     if signal not in dataSettings.clipped_signals:
                         if not allTimesInBounds(normalized_dic[signal],dataSettings.deviation_cutoff):
                             within_deviation=False
@@ -119,10 +131,16 @@ def preprocess_data(processed_data_filename,
                         tmp_profiles_arr={}
                         tmp_scalars_arr={}
                         for profile in profiles:
-                            tmp_profiles_arr[profile]=f[shot][profile][t_ind:t_ind+lookahead+1]
+                            if (profile in zero_fill_signals) and (profile not in f[shot]):
+                                tmp_profiles_arr[profile]=np.zeros(lookahead+1,dataSettings.nx)
+                            else:
+                                tmp_profiles_arr[profile]=f[shot][profile][t_ind:t_ind+lookahead+1]
                         for scalar in scalars:
-                            tmp_scalars_arr[scalar]=f[shot][scalar][t_ind:t_ind+lookahead+1]
-                        if np.all([profiles_ok(tmp_profiles) for tmp_profiles in tmp_profiles_arr.values()]) \
+                            if (scalar in zero_fill_signals) and (scalar not in f[shot]):
+                                tmp_scalars_arr[scalar]=np.zeros(lookahead+1)
+                            else:
+                                tmp_scalars_arr[scalar]=f[shot][scalar][t_ind:t_ind+lookahead+1]
+                        if np.all([profiles_ok(tmp_profiles, remove_all_zero_profiles) for tmp_profiles in tmp_profiles_arr.values()]) \
                            and np.all([scalars_ok(tmp_scalars) for tmp_scalars in tmp_scalars_arr.values()]):
                             for profile in profiles:
                                 processed_data[profile].append(tmp_profiles_arr[profile])
@@ -154,8 +172,11 @@ def preprocess_data(processed_data_filename,
           f'{included_timestep_count}/{total_timestep_count} timesteps included')
     for signal in processed_data:
         processed_data[signal]=np.array(processed_data[signal])
-    with open(processed_data_filename, 'wb') as f:
-        pickle.dump(processed_data,f)
+    if processed_data_filename is not None:
+        with open(processed_data_filename, 'wb') as f:
+            pickle.dump(processed_data,f)
+    else:
+        return processed_data
 
 # lets you included nan for autoregressive predictions
 # shots is a list of shots; initial_times is a list of start times (in ms);
