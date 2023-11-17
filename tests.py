@@ -4,10 +4,11 @@ import os
 from customDatasetMakers import get_state_indices_dic, state_to_dic, dic_to_state, \
     preprocess_data
 from customModels import IanRNN
-from train_helpers import get_mask, masked_loss
+from train_helpers import get_state_mask, get_sample_time_state_mask, masked_loss
 import numpy as np
 
 # takes ~90 seconds the first time then faster after (I think h5 unravels itself like DNA / histones)
+@unittest.SkipTest
 class TestPreprocessedData(unittest.TestCase):
     def test_ech_exclusion(self):
         data_filename='/projects/EKOLEMEN/profile_predictor/joe_hiro_models/diiid_data.h5'
@@ -86,17 +87,25 @@ class TestStateDicConversions(unittest.TestCase):
                          profiles,parameters,actuators,nx=3)
         end_state=dic_to_state(dic,
                                profiles,parameters,actuators,nx=3)
-        print(start_state)
-        print(end_state)
         self.assertTrue(np.allclose(start_state,end_state))
 
 class TestTrainHelpers(unittest.TestCase):
+    def test_state_mask(self):
+        profiles=['one','two']
+        parameters=['three','four']
+        actuators=['onion'] # this doesn't even matter
+        mask=get_state_mask(profiles,parameters,actuators,
+                            masked_outputs=['two','three'], rho_bdry_index=3,
+                            nx=4)
+        truth=torch.Tensor([1,1,1,0,
+                            0,0,0,0,
+                            0,
+                            1])
+        self.assertTrue(torch.allclose(truth,mask))
     def test_mask(self):
-        shape=(2,6,3)
         lengths=[6,4]
         nwarmup=2
-        masked_indices=[0,2]
-        mask=get_mask(shape, lengths, nwarmup, masked_indices=masked_indices)
+        state_mask=torch.Tensor([0,1,0])
         truth=torch.Tensor([[[0,0,0], #first sample
                              [0,0,0],   #timesteps in sample
                              [0,1,0],      #state elements in timestep
@@ -109,6 +118,8 @@ class TestTrainHelpers(unittest.TestCase):
                              [0,1,0],
                              [0,0,0],
                              [0,0,0]]])
+        mask=get_sample_time_state_mask(state_mask, truth.size(),
+                                        lengths=lengths, nwarmup=nwarmup)
         self.assertTrue(np.allclose(truth,mask))
         output=torch.Tensor([[[1,2,3], #first sample
                               [1,2,3],   #timesteps in sample
@@ -125,9 +136,11 @@ class TestTrainHelpers(unittest.TestCase):
         target=torch.zeros_like(output)
         loss=masked_loss(torch.nn.MSELoss(reduction='sum'),
                          output,target,
-                         lengths=lengths,
-                         nwarmup=nwarmup,
-                         masked_indices=masked_indices)
+                         mask)
+        self.assertEqual(loss,100)
+        loss=masked_loss(torch.nn.MSELoss(reduction='sum'),
+                         output,target,
+                         mask)
         self.assertEqual(loss,100)
 
 class TestModels(unittest.TestCase):

@@ -2,7 +2,8 @@ import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset, get_state_indices_dic
 from customModels import IanRNN, IanMLP, HiroLinear
-from train_helpers import make_bucket, masked_loss
+from train_helpers import make_bucket, \
+    get_state_mask, get_sample_time_state_mask, masked_loss
 
 from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
 
@@ -49,9 +50,11 @@ if config.has_section('config'):
     frozen_layers=config['tuning'].get('frozen_layers','').split()
     resume_training=config['tuning'].getboolean('resume_training',False)
     masked_outputs=config['tuning'].get('masked_outputs','').split()
+    rho_bdry_index=config['tuning'].get('rho_bdry_index',-1).split()
 else:
     tune_model=False
-    masked_indices=[]
+    masked_outputs=[]
+    rho_bdry_index=-1
 # epoch to start on, should be 0 generally but can increase w/ tune_model to restart a model that stopped halfway
 # at the moment, by default tune_model will start the epochs where the previous left off
 start_epoch=0
@@ -79,10 +82,6 @@ if tune_model:
             print(f"Freezing '{name}' layer for tuning procedure")
             for param in child.parameters():
                 param.requires_grad = False
-    indices_dic=get_state_indices_dic(profiles, parameters, actuators)
-    masked_indices=[]
-    for sig in masked_outputs:
-        masked_indices+=indices_dic[sig]
 
 min_sample_length=max(2*nwarmup,6)
 print('Organizing train data from preprocessed_data')
@@ -101,7 +100,8 @@ print(f'...took {(time.time()-start_time):0.2f}s')
 # I divide out by myself since different sequences/batches have different sizes
 # see train_helpers.py
 loss_fn=torch.nn.MSELoss(reduction='sum')
-
+state_mask=get_state_mask(profiles, parameters, actuators,
+                          masked_outputs, rho_bdry_index)
 print('Training...')
 if torch.cuda.is_available():
     device='cuda'
@@ -171,10 +171,11 @@ for epoch in range(start_epoch, n_epochs):
 
         optimizer.zero_grad()
         model_output=model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
+        mask=get_sample_time_state_mask(state_mask, model_output.size(), length_bucket, nwarmup)
+        mask=mask.to(device)
         train_loss=masked_loss(loss_fn,
                                model_output, padded_y,
-                               length_bucket, nwarmup=nwarmup,
-                               masked_indices=masked_indices)
+                               mask)
         # L1 regularization
         '''l1_reg = torch.tensor(0.0, device=device)
         for param in model.parameters():
@@ -205,10 +206,11 @@ for epoch in range(start_epoch, n_epochs):
             padded_x=padded_x.to(device)
             padded_y=padded_y.to(device)
             model_output = model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
-            val_loss = masked_loss(loss_fn,
-                                   model_output, padded_y,
-                                   length_bucket, nwarmup=nwarmup,
-                                   masked_indices=masked_indices)
+            mask=get_sample_time_state_mask(state_mask, model_output.size(), length_bucket, nwarmup)
+            mask=mask.to(device)
+            val_loss=masked_loss(loss_fn,
+                                 model_output, padded_y,
+                                 mask)
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
