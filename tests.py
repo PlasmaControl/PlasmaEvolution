@@ -53,13 +53,22 @@ class TestStateDicConversions(unittest.TestCase):
         profiles=['one', 'two']
         parameters=['three']
         actuators=['four','five']
-        self.assertDictEqual(get_state_indices_dic(profiles, parameters, actuators, nx=3),
+        calculations=[]
+        self.assertDictEqual(get_state_indices_dic(profiles, parameters, calculations, actuators, nx=3),
                              {'one': [0,1,2], 'two': [3,4,5], 'three': 6, 'four': [7,9], 'five': [8,10]})
         profiles=['one']
         parameters=[]
         actuators=[]
-        self.assertDictEqual(get_state_indices_dic(profiles, parameters),
+        self.assertDictEqual(get_state_indices_dic(profiles,parameters,calculations,actuators),
                              {'one': list(range(33))})
+        profiles=['one']
+        parameters=[]
+        calculations=['two']
+        actuators=['three']
+        nx=3
+        result=get_state_indices_dic(profiles,parameters,calculations,actuators,nx=nx)
+        self.assertDictEqual(result,
+                             {'one': [0,1,2], 'two': [3,4,5], 'three': [6,7]})
     def test_state_dic_conversions(self):
         state=torch.arange(11)
         dic=state_to_dic(state,['one','two'],['three'],['four'],nx=4)
@@ -74,19 +83,20 @@ class TestStateDicConversions(unittest.TestCase):
         profiles=['one']
         parameters=['two']
         actuators=['four']
+        calculations=[]
         start_dic={'one': [[1,2,3],[2,2,3]], 'two': [1,2], 'four': [[3,3],[3,3]]}
         state=dic_to_state(start_dic,
-                           profiles,parameters,actuators,nx=3)
-        end_dic=state_to_dic(state, profiles, parameters, actuators,nx=3)
+                           profiles,parameters,calculations,actuators,nx=3)
+        end_dic=state_to_dic(state,profiles,parameters,calculations,actuators,nx=3)
         self.assert_numpy_dictionaries_equal(start_dic, end_dic)
         start_state=np.arange(9)
         profiles=['one','two']
         parameters=['three']
         actuators=['four']
         dic=state_to_dic(start_state,
-                         profiles,parameters,actuators,nx=3)
+                         profiles,parameters,calculations,actuators,nx=3)
         end_state=dic_to_state(dic,
-                               profiles,parameters,actuators,nx=3)
+                               profiles,parameters,calculations,actuators,nx=3)
         self.assertTrue(np.allclose(start_state,end_state))
 
 class TestTrainHelpers(unittest.TestCase):
@@ -94,7 +104,7 @@ class TestTrainHelpers(unittest.TestCase):
         profiles=['one','two']
         parameters=['three','four']
         actuators=['onion'] # this doesn't even matter
-        mask=get_state_mask(profiles,parameters,actuators,
+        mask=get_state_mask(profiles,parameters,
                             masked_outputs=['two','three'], rho_bdry_index=3,
                             nx=4)
         truth=torch.Tensor([1,1,1,0,

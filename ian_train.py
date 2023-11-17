@@ -22,7 +22,7 @@ else:
 config=configparser.ConfigParser()
 config.read(config_filename)
 preprocessed_data_filenamebase=config['preprocess']['preprocessed_data_filenamebase']
-model_type=config['model']['model_type']
+model_type=config['model'].get('model_type','IanRNN')
 bucket_size=config['optimization'].getint('bucket_size')
 nwarmup=config['optimization'].getint('nwarmup')
 n_epochs=config['optimization'].getint('n_epochs')
@@ -34,7 +34,8 @@ l1_lambda=config['optimization'].getfloat('l1_lambda')
 l2_lambda=config['optimization'].getfloat('l2_lambda')
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
-parameters=config['inputs']['parameters'].split()
+parameters=config['inputs'].get('parameters','').split()
+calculations=config['inputs'].get('calculations','').split()
 autoregression_num_steps=config['optimization'].getfloat('autoregression_num_steps',1)
 autoregression_start_epoch=config['optimization'].getint('autoregression_start_epoch',int(n_epochs/4))
 autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch',int(3*n_epochs/4))
@@ -63,7 +64,8 @@ model_hyperparams={key: int(val) for key,val in dict(config[model_type]).items()
 
 state_length=len(profiles)*nx+len(parameters)
 actuator_length=len(actuators)
-model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
+calculation_length=len(calculations)*33
+model=models[model_type](input_dim=state_length+calculation_length+2*actuator_length, output_dim=state_length,
                          **model_hyperparams)
 # dump to same location as the config filename, with .tar instead of .cfg
 output_filename=os.path.join(config['model']['output_dir'],f"{config['model']['output_filename_base']}.tar")
@@ -84,23 +86,25 @@ if tune_model:
                 param.requires_grad = False
 
 min_sample_length=max(2*nwarmup,6)
-print('Organizing train data from preprocessed_data')
+train_filename=preprocessed_data_filenamebase+'train.pkl'
+print(f'Organizing train data from {train_filename}')
 start_time=time.time()
-x_train, y_train, shots, times = ian_dataset(preprocessed_data_filenamebase+'train.pkl',
-                                             profiles, actuators, parameters,
+x_train, y_train, shots, times = ian_dataset(train_filename,
+                                             profiles,parameters,calculations,actuators,
                                              sort_by_size=True, min_sample_length=min_sample_length)
 print(f'...took {(time.time()-start_time):0.2f}s')
-print('Organizing validation data from preprocessed_data')
+val_filename=preprocessed_data_filenamebase+'val.pkl'
+print(f'Organizing validation data from {val_filename}')
 start_time=time.time()
-x_val, y_val, shots, times = ian_dataset(preprocessed_data_filenamebase+'val.pkl',
-                                         profiles, actuators, parameters,
+x_val, y_val, shots, times = ian_dataset(val_filename,
+                                         profiles,parameters,calculations,actuators,
                                          sort_by_size=True, min_sample_length=min_sample_length)
 print(f'...took {(time.time()-start_time):0.2f}s')
 
 # I divide out by myself since different sequences/batches have different sizes
 # see train_helpers.py
 loss_fn=torch.nn.MSELoss(reduction='sum')
-state_mask=get_state_mask(profiles, parameters, actuators,
+state_mask=get_state_mask(profiles, parameters,
                           masked_outputs, rho_bdry_index)
 print('Training...')
 if torch.cuda.is_available():
@@ -225,8 +229,9 @@ for epoch in range(start_epoch, n_epochs):
             'train_losses': avg_train_losses,
             'val_losses': avg_val_losses,
             'profiles': profiles,
-            'actuators': actuators,
             'parameters': parameters,
+            'calculations': calculations,
+            'actuators': actuators,
             'model_hyperparams': model_hyperparams,
             'exclude_ech': True
         }, output_filename)

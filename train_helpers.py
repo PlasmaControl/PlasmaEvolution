@@ -4,10 +4,10 @@ import dataSettings
 from customDatasetMakers import get_state_indices_dic
 
 # 2D mask (to matrix-transform the state)
-def get_state_mask(profiles, parameters, actuators=[],
+def get_state_mask(profiles, parameters,
                    masked_outputs=[], rho_bdry_index=-1,
                    nx=dataSettings.nx):
-    indices_dic=get_state_indices_dic(profiles,parameters,actuators,nx)
+    indices_dic=get_state_indices_dic(profiles,parameters,calculations=[],nx=nx)
     state_length=0
     for sig in profiles+parameters:
         state_length+=len(np.atleast_1d(indices_dic[sig]))
