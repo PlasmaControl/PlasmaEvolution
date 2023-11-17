@@ -21,7 +21,7 @@ else:
 
 config=configparser.ConfigParser()
 config.read(config_filename)
-preprocessed_data_filenamebase=config['preprocess']['preprocessed_data_filenamebase']
+preprocessed_data_filenamebase=config['inputs']['preprocessed_data_filenamebase']
 model_type=config['model'].get('model_type','IanRNN')
 bucket_size=config['optimization'].getint('bucket_size')
 nwarmup=config['optimization'].getint('nwarmup')

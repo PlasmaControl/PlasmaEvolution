@@ -76,17 +76,6 @@ if use_gyroBohm:
 # exclude the shot from the dataset
 deviation_cutoff=10
 
-min_shot=0
-max_shot=2000000
-
-val_indices=[np.random.randint(1,10)]
-test_indices=[0]
-
-#train_shots=[187076, 191577]
-train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in val_indices+test_indices]
-val_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in val_indices]
-test_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in test_indices]
-
 # ohmic power in Watts, to add to Pinj to get power for taue calculation
 ohmicPower=5e5
 # min and max taue in seconds
