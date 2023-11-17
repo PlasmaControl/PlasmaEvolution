@@ -4,7 +4,7 @@ import shutil
 submit_runs=True
 
 root_dir=os.path.expanduser('~/PlasmaEvolution')
-baseconfig_filename='configs/default.cfg'
+baseconfig_filename='model.cfg'
 config=configparser.ConfigParser()
 config.read(baseconfig_filename)
 output_dir=config['model']['output_dir']

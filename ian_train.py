@@ -17,7 +17,7 @@ models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLinear': HiroLinear}
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
 else:
-    config_filename='configs/default.cfg'
+    config_filename='model.cfg'
 
 config=configparser.ConfigParser()
 config.read(config_filename)

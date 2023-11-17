@@ -8,7 +8,7 @@ from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
 else:
-    config_filename='configs/default.cfg'
+    config_filename='preprocess.cfg'
 
 config=configparser.ConfigParser()
 config.read(config_filename)
