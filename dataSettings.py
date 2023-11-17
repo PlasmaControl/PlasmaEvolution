@@ -59,10 +59,14 @@ normalizations={
     'ech_pwr_total': {'mean': 0, 'std': 1e6}
     }
 
-clipped_signals={
-    'HE_astrainterpretiveZIPFIT': {'min': 0, 'max': 20},
-    'XI_astrainterpretiveZIPFIT': {'min': 0, 'max': 20}
-    }
+clipped_signals={}
+sig_bounds={
+    'HE': {'min': 0, 'max': 20},
+    'XI': {'min': 0, 'max': 20}
+}
+for astrasim in ['astrainterpretiveZIPFIT', 'astrainterpretiveECHZIPFIT']:
+    for sig in ['HE','XI','PETOT','PITOT']:
+        clipped_signals[f'{sig}_{astrasim}']=sig_bounds
 
 if use_gyroBohm:
     normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 5e-6}

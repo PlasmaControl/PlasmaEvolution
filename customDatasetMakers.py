@@ -52,7 +52,8 @@ def preprocess_data(processed_data_filename,
     else:
         print(f'Building dataset to return (not to dump to file)')
     start_time=time.time()
-    remove_all_zero_profiles=not any([profile in zero_fill_signals for profile in profiles])
+    # the below would be a bug sort of, want to deal with each profile individually
+    remove_all_zero_profiles=True #not any([profile in zero_fill_signals for profile in profiles])
     with h5py.File(raw_data_filename,'r') as f:
         times=f['times'][:]
         processed_data={key: [] for key in profiles+scalars+['shotnum','times']}
