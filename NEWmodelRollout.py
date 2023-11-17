@@ -76,7 +76,7 @@ for sample_ind in range(len(x_test)):
     input_dic=state_to_dic(x_test[sample_ind], profiles, parameters, calculations, actuators)
     denormed_dic=get_denormalized_dic(input_dic)
     for sig in actuators:
-        all_info[key]['truth']['actuators'][sig]=denormed_dic[sig][-1]
+        all_info[key]['truth']['actuators'][sig]=denormed_dic[sig][:,-1]
     output_dic=state_to_dic(y_test[sample_ind], profiles, parameters)
     denormed_dic=get_denormalized_dic(output_dic)
     for sig in profiles:
