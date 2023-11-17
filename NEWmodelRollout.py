@@ -30,7 +30,8 @@ config.read(config_filename)
 output_filename_base=config['model']['output_filename_base']
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
-parameters=config['inputs']['parameters'].split()
+parameters=config['inputs'].get('parameters','').split()
+calculations=config['inputs'].get('calculations','').split()
 plotted_profiles=profiles
 plotted_actuators=actuators
 plotted_parameters=parameters
@@ -42,7 +43,7 @@ pickle_filename=f"rollout_{output_filename_base}{appendage}.pkl"
 
 data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 
-x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,actuators,parameters,sort_by_size=True)
+x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True)
 
 considered_models = prediction_helpers.get_considered_models(config_filename, ensemble=ensemble)
 
@@ -58,7 +59,7 @@ begin_time=time.time()
 prev_time=begin_time
 for sample_ind in range(len(x_test)):
     if fake_actuators:
-        x_test[sample_ind]=prediction_helpers.get_fake_actuator_state(x_test[sample_ind], profiles, parameters, actuators)
+        x_test[sample_ind]=prediction_helpers.get_fake_actuator_state(x_test[sample_ind], profiles, parameters, calculations, actuators)
     num_times=len(x_test[sample_ind])
     # add 1 because we're looking at predicted compared to target (and -1 for actuator from input step)
     true_times=np.arange(int(times[sample_ind]+dataSettings.DT*1e3),
@@ -72,7 +73,7 @@ for sample_ind in range(len(x_test)):
                    'predictions': {'profiles': {}, 'parameters': {}}}
     all_info[key]['truth']['times']=np.array(true_times)
     # remember this returns actuators at the present AND NEXT time, hence -1 index below
-    input_dic=state_to_dic(x_test[sample_ind], profiles, parameters, actuators)
+    input_dic=state_to_dic(x_test[sample_ind], profiles, parameters, calculations, actuators)
     denormed_dic=get_denormalized_dic(input_dic)
     for sig in actuators:
         all_info[key]['truth']['actuators'][sig]=denormed_dic[sig][-1]

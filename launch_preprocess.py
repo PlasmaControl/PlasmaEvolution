@@ -1,7 +1,7 @@
 import os
 import configparser
 import shutil
-submit_runs=False
+submit_runs=True
 
 root_dir=os.path.expanduser('~/PlasmaEvolution')
 baseconfig_filename='preprocess.cfg'

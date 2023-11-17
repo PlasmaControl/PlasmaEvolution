@@ -354,13 +354,12 @@ def state_to_dic(state_arrs, profiles, parameters, calculations=[], actuators=[]
 def dic_to_state(dic, profiles, parameters, calculations=[], actuators=[], nx=dataSettings.nx):
     for sig in dic:
         dic[sig]=torch.tensor(dic[sig]).to(torch.float)
+    state_length=nx*len(profiles)+len(parameters)+nx*len(calculations)+len(actuators)*2
     dims=dic[profiles[0]].size()
     if len(dims)>1:
         num_states=dims[0]
-        state_length=dims[1]*len(profiles)+len(parameters)+dims[1]*len(calculations)+len(actuators)*2
         state_arrs=torch.zeros((num_states,state_length))
     else:
-        state_length=dims[0]*len(profiles)+len(parameters)+dims[0]*len(profiles)+len(actuators)*2
         state_arrs=torch.zeros(state_length)
     indices_dic=get_state_indices_dic(profiles, parameters, calculations, actuators, nx=nx)
     for sig in indices_dic:

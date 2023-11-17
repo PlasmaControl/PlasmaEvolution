@@ -71,12 +71,20 @@ class TestStateDicConversions(unittest.TestCase):
                              {'one': [0,1,2], 'two': [3,4,5], 'three': [6,7]})
     def test_state_dic_conversions(self):
         state=torch.arange(11)
-        dic=state_to_dic(state,['one','two'],['three'],['four'],nx=4)
+        profiles=['one','two']
+        parameters=['three']
+        calculations=[]
+        actuators=['four']
+        dic=state_to_dic(state,profiles,parameters,calculations,actuators,nx=4)
         true_dic={'one': np.arange(4), 'two': np.arange(4,8), 'three': 8, 'four': np.arange(9,11)}
         self.assert_numpy_dictionaries_equal(true_dic, dic)
         states=torch.zeros((3,68)) # 3 timesteps, 2 profiles, 1 actuator
         states[-1,-2:]=torch.tensor([2,3])
-        dic=state_to_dic(states,['one','two'],[],['three'])
+        profiles=['one','two']
+        parameters=[]
+        calculations=[]
+        actuators=['three']
+        dic=state_to_dic(states,profiles,parameters,calculations,actuators)
         true_dic={'one': np.zeros((3,33)), 'two': np.zeros((3,33)), 'three': np.array([[0,0],[0,0],[2,3]])}
         self.assert_numpy_dictionaries_equal(true_dic, dic)
     def test_inversion(self):
