@@ -5,7 +5,7 @@ from customModels import IanRNN, IanMLP, HiroLinear
 from train_helpers import make_bucket, \
     get_state_mask, get_sample_time_state_mask, masked_loss
 
-from dataSettings import nx, train_shots, val_shots, test_shots, val_indices
+from dataSettings import nx
 
 import configparser
 import os
@@ -222,7 +222,6 @@ for epoch in range(start_epoch, n_epochs):
         print(f"Checkpoint")
         torch.save({
             'epoch': epoch,
-            'val_indices': val_indices,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             #'scheduler_state_dict': scheduler.state_dict(),

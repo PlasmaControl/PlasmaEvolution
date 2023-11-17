@@ -42,14 +42,6 @@ normalizations={
     'epedHeightForNe3': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe5': {'mean': 0, 'std': 5e-3},
     'epedHeightForNe7': {'mean': 0, 'std': 5e-3},
-    'CC_astrainterpretiveZIPFIT': {'mean': 0, 'std': 50},
-    'CUBS_astrainterpretiveZIPFIT': {'mean': 0, 'std': 1},
-    'HE_astrainterpretiveZIPFIT': {'mean': 0, 'std': 1},
-    'XI_astrainterpretiveZIPFIT': {'mean': 0, 'std': 1},
-    'PITOT_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
-    'PIBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
-    'PETOT_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
-    'PEBM_astrainterpretiveZIPFIT': {'mean': 0, 'std': 2},
     'D_tot': {'mean': 0, 'std': 1e2},
     'H_tot': {'mean': 0, 'std': 1e2},
     'Ar_tot': {'mean': 0, 'std': 1e2},
@@ -58,15 +50,28 @@ normalizations={
     'N_tot': {'mean': 0, 'std': 1e2},
     'ech_pwr_total': {'mean': 0, 'std': 1e6}
     }
-
 clipped_signals={}
+
+# add ASTRA stuff, for all possible ASTRA runs
+sig_normalizations={
+    'CC': {'mean': 0, 'std': 50},
+    'CUBS': {'mean': 0, 'std': 1},
+    'HE': {'mean': 0, 'std': 1},
+    'XI': {'mean': 0, 'std': 1},
+    'PITOT': {'mean': 0, 'std': 2},
+    'PIBM': {'mean': 0, 'std': 2},
+    'PETOT': {'mean': 0, 'std': 2},
+    'PEBM': {'mean': 0, 'std': 2}
+}
 sig_bounds={
     'HE': {'min': 0, 'max': 20},
     'XI': {'min': 0, 'max': 20}
 }
 for astrasim in ['astrainterpretiveZIPFIT', 'astrainterpretiveECHZIPFIT']:
-    for sig in ['HE','XI','PETOT','PITOT']:
-        clipped_signals[f'{sig}_{astrasim}']=sig_bounds
+    for sig in sig_normalizations:
+        normalizations[f'{sig}_{astrasim}']=sig_normalizations[sig]
+    for sig in sig_bounds:
+        clipped_signals[f'{sig}_{astrasim}']=sig_bounds[sig]
 
 if use_gyroBohm:
     normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 5e-6}
@@ -128,6 +133,7 @@ def get_normalized_dic(denormed_dic, excluded_sigs=[]):
         denormed_dic=get_gyro_normalized_dic(denormed_dic)
     normalized_dic={}
     for sig in denormed_dic:
+        denormed_dic[sig]=np.array(denormed_dic[sig])
         if sig not in excluded_sigs:
             if 'qpsi' in sig:
                 normalized_dic[sig] = 1. / denormed_dic[sig]
@@ -140,6 +146,7 @@ def get_normalized_dic(denormed_dic, excluded_sigs=[]):
 def get_denormalized_dic(normed_dic, excluded_sigs=[]):
     denormalized_dic={}
     for sig in normed_dic:
+        normed_dic[sig]=np.array(normed_dic[sig])
         if sig not in excluded_sigs:
             if 'qpsi' in sig:
                 denormalized_dic[sig] = 1. / normed_dic[sig]

@@ -3,6 +3,7 @@ import torch
 import os
 from customDatasetMakers import get_state_indices_dic, state_to_dic, dic_to_state, \
     preprocess_data
+from dataSettings import get_denormalized_dic, get_normalized_dic
 from customModels import IanRNN
 from train_helpers import get_state_mask, get_sample_time_state_mask, masked_loss
 import numpy as np
@@ -59,6 +60,7 @@ class TestStateDicConversions(unittest.TestCase):
         profiles=['one']
         parameters=[]
         actuators=[]
+        calculations=[]
         self.assertDictEqual(get_state_indices_dic(profiles,parameters,calculations,actuators),
                              {'one': list(range(33))})
         profiles=['one']
@@ -106,6 +108,40 @@ class TestStateDicConversions(unittest.TestCase):
         end_state=dic_to_state(dic,
                                profiles,parameters,calculations,actuators,nx=3)
         self.assertTrue(np.allclose(start_state,end_state))
+    def test_denormalization(self):
+        dic={'zipfit_etempfit_rho': [0.5,0.5], 'PETOT_astrainterpretiveECHZIPFIT': [0.5,0.5],
+             'qpsi': [2,2],
+             'bt': 1, 'ip': 1e-6}
+        denormed_dic=get_denormalized_dic(dic)
+        true_dic={'zipfit_etempfit_rho': [1,1], 'PETOT_astrainterpretiveECHZIPFIT': [1,1], 'qpsi': [0.5,0.5],
+                  'bt': 1, 'ip': 1}
+        self.assert_numpy_dictionaries_equal(denormed_dic, true_dic)
+        dic={'zipfit_etempfit_rho': [[0.5,0.5],[0.5,0.5]],
+             'PETOT_astrainterpretiveECHZIPFIT': [[0.5,0.5],[0.5,0.5]],
+             'qpsi': [[2,2],[2,2]],
+             'bt': [1,1], 'ip': [1e-6,1e-6]}
+        denormed_dic=get_denormalized_dic(dic)
+        true_dic={'zipfit_etempfit_rho': [[1,1],[1,1]], 'PETOT_astrainterpretiveECHZIPFIT': [[1,1],[1,1]],
+                  'qpsi': [[0.5,0.5],[0.5,0.5]],
+                  'bt': [1,1], 'ip': [1,1]}
+        self.assert_numpy_dictionaries_equal(denormed_dic, true_dic)
+    def test_normalization(self):
+        dic={'zipfit_etempfit_rho': [2,2], 'PETOT_astrainterpretiveECHZIPFIT': [2,2],
+             'qpsi': [0.5,0.5],
+             'bt': 1, 'ip': 1e6}
+        normed_dic=get_normalized_dic(dic)
+        true_dic={'zipfit_etempfit_rho': [1,1], 'PETOT_astrainterpretiveECHZIPFIT': [1,1], 'qpsi': [2,2],
+                  'bt': 1, 'ip': 1}
+        self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
+        dic={'zipfit_etempfit_rho': [[2,2],[2,2]],
+             'PETOT_astrainterpretiveECHZIPFIT': [[2,2],[2,2]],
+             'qpsi': [[0.5,0.5],[0.5,0.5]],
+             'bt': [1,1], 'ip': [1e6,1e6]}
+        normed_dic=get_normalized_dic(dic)
+        true_dic={'zipfit_etempfit_rho': [[1,1],[1,1]], 'PETOT_astrainterpretiveECHZIPFIT': [[1,1],[1,1]],
+                  'qpsi': [[2,2],[2,2]],
+                  'bt': [1,1], 'ip': [1,1]}
+        self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
 
 class TestTrainHelpers(unittest.TestCase):
     def test_state_mask(self):
