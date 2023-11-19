@@ -111,17 +111,20 @@ class HiroLinear(torch.nn.Module):
                  ):
         super().__init__()
 
-
         self.input_dim = input_dim
         self.output_dim = output_dim
         state_dim = output_dim
 
         self.encoder = torch.nn.Sequential()
-        self.encoder.append(torch.nn.Linear(state_dim, state_dim))
-        self.encoder.append(torch.nn.LeakyReLU(negative_slope=0.01))
+        self.encoding_first_layer = torch.nn.Sequential(
+            torch.nn.Linear(state_dim, state_dim),
+            torch.nn.LeakyReLU(negative_slope=0.01))
+        self.encoder.append(self.encoding_first_layer)
+        self.encoding_extra_layers = torch.nn.Sequential()
         for i in range(encoder_extra_layers):
-            self.encoder.append(torch.nn.Linear(state_dim, state_dim))
-            self.encoder.append(torch.nn.LeakyReLU(negative_slope=0.01))
+            self.encoding_extra_layers.append(torch.nn.Linear(state_dim, state_dim))
+            self.encoding_extra_layers.append(torch.nn.LeakyReLU(negative_slope=0.01))
+        self.encoder.append(self.encoding_extra_layers)
 
         # linear A and B matrices
         self.A = torch.nn.Linear(state_dim, state_dim)
@@ -129,25 +132,46 @@ class HiroLinear(torch.nn.Module):
         self.B = torch.nn.Linear(actuator_length, state_dim)
 
         self.decoder = torch.nn.Sequential()
-        self.decoder.append(InverseLeakyReLU(slope=0.01))
-        self.decoder.append(torch.nn.Linear(state_dim, state_dim))
+        self.decoding_first_layer = torch.nn.Sequential(
+            InverseLeakyReLU(slope=0.01),
+            torch.nn.Linear(state_dim, state_dim))
+        self.decoder.append(self.decoding_first_layer)
+        self.decoding_extra_layers = torch.nn.Sequential()
         for i in range(decoder_extra_layers):
-            self.decoder.append(InverseLeakyReLU(slope=0.01))
-            self.decoder.append(torch.nn.Linear(state_dim, state_dim))
-
-    def forward(self, padded_input):
-
+            self.decoding_extra_layers.append(InverseLeakyReLU(slope=0.01))
+            self.decoding_extra_layers.append(torch.nn.Linear(state_dim, state_dim))
+        self.decoder.append(self.decoding_extra_layers)
+    def forward(self, padded_input, reset_probability=0, nwarmup=0):
         state_dim = self.output_dim
-
-        x_t = padded_input[:state_dim]
-        u_t = padded_input[state_dim:]
-
+        x_t = padded_input[:, :, :state_dim]
+        actuator_length = (self.input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
+        u_t = padded_input[:, :, state_dim:state_dim+actuator_length]
+        u_t1 = padded_input[:, :, state_dim+actuator_length:]
         z_t = self.encoder(x_t)
-
-        z_t1 = self.A(z_t) + self.B(u_t)
-
-        x_t1 = self.decode(z_t1)
-
+        # inference without autoregression (20x faster)
+        if reset_probability>=1:
+            z_t1=self.A(z_t) + self.B(u_t)
+        # inference with probabilistic autoregression
+        else:
+            # number of times
+            seq_len=padded_input.size()[-2]
+            # padded_output dim is padded_input without actuator chunk
+            z_t1=torch.zeros(z_t.size())
+            # maintain previous output for autoregression (start at true t=0 state)
+            prev_output=z_t[:,0,:].unsqueeze(1)
+            for t_ind in range(seq_len):
+                if (t_ind<=nwarmup) or (torch.rand(1).item() < reset_probability):
+                    # predict from true state (don't autoregress this timestep)
+                    this_input = z_t[:, t_ind, :].unsqueeze(1)
+                else:
+                    # autoregress: use previous output with actuators
+                    this_input=prev_output
+                ####### EVOLVE THE STATE
+                this_output=self.A(this_input) + self.B(u_t[:, t_ind, :].unsqueeze(1)) # is this the right actuators?
+                ####### SAVE THE OUTPUT
+                prev_output = this_output
+                z_t1[:,t_ind,:] = prev_output.squeeze(1)
+        x_t1 = self.decoder(z_t1)
         return x_t1
 
 # simple mapping, given just actuators over time try to predict profiles
