@@ -175,6 +175,7 @@ for epoch in range(start_epoch, n_epochs):
 
         optimizer.zero_grad()
         model_output=model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
+        model_output=model_output.to(device)
         mask=get_sample_time_state_mask(state_mask, model_output.size(), length_bucket, nwarmup)
         mask=mask.to(device)
         train_loss=masked_loss(loss_fn,
@@ -210,6 +211,7 @@ for epoch in range(start_epoch, n_epochs):
             padded_x=padded_x.to(device)
             padded_y=padded_y.to(device)
             model_output = model(padded_x,reset_probability=reset_probability,nwarmup=nwarmup)
+            model_output = model_output.to(device)
             mask=get_sample_time_state_mask(state_mask, model_output.size(), length_bucket, nwarmup)
             mask=mask.to(device)
             val_loss=masked_loss(loss_fn,
