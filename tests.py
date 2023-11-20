@@ -4,7 +4,7 @@ import os
 from customDatasetMakers import get_state_indices_dic, state_to_dic, dic_to_state, \
     preprocess_data
 from dataSettings import get_denormalized_dic, get_normalized_dic
-from customModels import IanRNN
+from customModels import IanRNN, HiroLinear
 from train_helpers import get_state_mask, get_sample_time_state_mask, masked_loss
 import numpy as np
 
@@ -156,7 +156,12 @@ class TestTrainHelpers(unittest.TestCase):
                             0,
                             1])
         self.assertTrue(torch.allclose(truth,mask))
-    def test_mask(self):
+    def test_mask(self, use_gpu=True):
+        if use_gpu and torch.cuda.is_available():
+            device='cuda'
+            print(f"Using {torch.cuda.device_count()} GPU(s)")
+        else:
+            device='cpu'
         lengths=[6,4]
         nwarmup=2
         state_mask=torch.Tensor([0,1,0])
@@ -188,6 +193,9 @@ class TestTrainHelpers(unittest.TestCase):
                               [1,2,3],
                               [1,2,3]]])
         target=torch.zeros_like(output)
+        output=output.to(device)
+        target=target.to(device)
+        mask=mask.to(device)
         loss=masked_loss(torch.nn.MSELoss(reduction='sum'),
                          output,target,
                          mask)
@@ -197,11 +205,41 @@ class TestTrainHelpers(unittest.TestCase):
                          mask)
         self.assertEqual(loss,100)
 
+        # this is a full-stack test of the model going through to loss
+        model=IanRNN(input_dim=3, output_dim=3,
+                     encoder_dim=1, encoder_extra_layers=0,
+                     rnn_dim=1, rnn_num_layers=1,
+                     decoder_dim=1, decoder_extra_layers=0,
+                     rnn_type='linear')
+        model.to(device)
+        # by setting all weights to 0 and biases to 1 it's the identity map
+        # [1,...,1]*x + 1 "encoder" layer
+        # 1*x + 1 "rnn" (really linear here) layer
+        # 1*x + 1 "decoder" layer
+        # [1,...,1]*x + [1,...,1] final layer (also part of "decoder")
+        for name, param in model.named_parameters():
+            # Just an example
+            if 'weight' in name:
+                param.data = torch.ones_like(param)
+            elif 'bias' in name:
+                param.data = torch.zeros_like(param)
+        new_output=model(output,reset_probability=1)
+        new_output=new_output.to(device)
+        loss=masked_loss(torch.nn.MSELoss(reduction='sum'),
+                         new_output,target,
+                         mask)
+
+
 class TestModels(unittest.TestCase):
-    def test_ian_rnn(self):
+    def test_ian_rnn(self, use_gpu=True):
         state_length=2
         actuator_length=1
         # 4 total inputs going in
+        if use_gpu and torch.cuda.is_available():
+            device='cuda'
+            if torch.cuda.device_count() > 1:
+                model = torch.nn.DataParallel(model)
+            print(f"Using {torch.cuda.device_count()} GPU(s)")
         model=IanRNN(input_dim=state_length+2*actuator_length, output_dim=state_length,
                      encoder_dim=1, encoder_extra_layers=0,
                      rnn_dim=1, rnn_num_layers=1,
@@ -239,6 +277,40 @@ class TestModels(unittest.TestCase):
         # check that lstm works at all (don't have a careful test for output correctness)
         model(test_input,reset_probability=0)
         model(test_input,reset_probability=1)
+    def test_HiroLinear(self, use_gpu=True):
+        state_length=2
+        actuator_length=1
+        # 4 total inputs going in
+        if use_gpu and torch.cuda.is_available():
+            device='cuda'
+            if torch.cuda.device_count() > 1:
+                model = torch.nn.DataParallel(model)
+            print(f"Using {torch.cuda.device_count()} GPU(s)")
+        model=HiroLinear(input_dim=state_length+2*actuator_length, output_dim=state_length,
+                     encoder_extra_layers=0,
+                     decoder_extra_layers=0
+                        )
+        for name, param in model.named_parameters():
+            # Just an example
+            if 'weight' in name:
+                param.data = torch.ones_like(param)
+            elif 'bias' in name:
+                param.data = torch.ones_like(param)
+        test_input=torch.ones((2,2,4))
+        test_input[:, 0, -1]=2
+        test_input[:,-1,-2]=2
+        test_input[:,-1,-1]=3
+        desired_output=torch.ones((2,2,2)) # [8,8]
+        desired_output[:,0,:]*=19
+        desired_output[:,1,:]*=21
+        model_output=model(test_input,reset_probability=1)
+        #print(model_output)
+        self.assertTrue(torch.allclose(model_output,desired_output))
+        desired_output=torch.ones((2,2,2))
+        desired_output[:,0,:]*=19
+        desired_output[:,1,:]*=45
+        model_output=model(test_input,reset_probability=0)
+        self.assertTrue(torch.allclose(model_output,desired_output))
 
 if __name__ == '__main__':
     unittest.main()
