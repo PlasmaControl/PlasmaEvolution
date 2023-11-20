@@ -23,7 +23,7 @@ zero_fill_signals=config['settings'].get('zero_fill_signals','').split()
 exclude_ech=config['settings'].getboolean('exclude_ech',True)
 exclude_ich=config['settings'].getboolean('exclude_ich',True)
 
-max_num_shots=config['shots'].getint('max_num_shots',2) #small for testing
+max_num_shots=config['shots'].getint('max_num_shots',200000) #small for testing
 min_shot=config['shots'].getint('min_shot',0)
 max_shot=config['shots'].getint('max_shot',200000)
 val_index=config['shots'].getint('val_index',5)
