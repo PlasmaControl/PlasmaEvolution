@@ -14,7 +14,7 @@ plot_ensemble=False
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
 else:
-    config_filename=f'configs/default.cfg'
+    config_filename=f'model.cfg'
 config=configparser.ConfigParser()
 config.read(config_filename)
 output_filename_base=config['model']['output_filename_base']
