@@ -274,6 +274,10 @@ def ian_dataset(processed_data_filename,
                 sort_by_size=True):
     with open(processed_data_filename, 'rb') as f:
         processed_data=pickle.load(f)
+    # pinj in kW, ech in MW; P_AUXILIARY in kW
+    # make sure pinj and ech_pwr_total are also in preprocessed data if you're going with this option
+    if 'P_AUXILIARY' in actuators:
+        processed_data['P_AUXILIARY']=processed_data['pinj']+1e-3*processed_data['ech_pwr_total']
     # normalize
     processed_data=dataSettings.get_normalized_dic(processed_data, excluded_sigs=['shotnum', 'times'])
     in_sample,in_sample,out_sample,out_sample,shots,times=[],[],[],[],[],[]
@@ -292,10 +296,9 @@ def ian_dataset(processed_data_filename,
         for calculation in calculations:
             in_timeslice.extend(processed_data[calculation][processed_sample_ind][0])
         # in future can have this be a loop over lookahead
-        for actuator in actuators:
-            in_timeslice.append(processed_data[actuator][processed_sample_ind][0])
-        for actuator in actuators:
-            in_timeslice.append(processed_data[actuator][processed_sample_ind][-1])
+        for time_index in [0,-1]:
+            for actuator in actuators:
+                in_timeslice.append(processed_data[actuator][processed_sample_ind][time_index])
         in_sample.append(in_timeslice)
         out_sample.append(out_timeslice)
         # move on to a new sample when we run out of contiguous chunks

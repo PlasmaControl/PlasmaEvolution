@@ -18,6 +18,7 @@ normalizations={
     'zipfit_zdensfit_rho': {'mean': 0, 'std': 2},
     'pres_EFIT01': {'mean': 0, 'std': 1e4},
     'pinj': {'mean': 0, 'std': 2e3},
+    'P_AUXILIARY': {'mean': 0, 'std': 2e3}, # custom signals, defined in customDatasetMakers ad hoc
     'tinj': {'mean': 0, 'std': 2},
     'ipsiptargt': {'mean': 0, 'std': 1},
     'ip': {'mean': 0, 'std': 1e6},
