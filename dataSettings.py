@@ -67,7 +67,7 @@ sig_bounds={
     'HE': {'min': 0, 'max': 20},
     'XI': {'min': 0, 'max': 20}
 }
-for astrasim in ['astrainterpretiveZIPFIT', 'astrainterpretiveECHZIPFIT']:
+for astrasim in ['astrainterpretive']:
     for sig in sig_normalizations:
         normalizations[f'{sig}_{astrasim}']=sig_normalizations[sig]
     for sig in sig_bounds:

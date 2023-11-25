@@ -21,6 +21,7 @@ profiles=config['signals']['profiles_superset'].split()
 scalars=config['signals']['scalars_superset'].split()
 zero_fill_signals=config['settings'].get('zero_fill_signals','').split()
 exclude_ech=config['settings'].getboolean('exclude_ech',True)
+ech_threshold=config['settings'].getfloat('ech_threshold',0.1)
 exclude_ich=config['settings'].getboolean('exclude_ich',True)
 
 max_num_shots=config['shots'].getint('max_num_shots',200000) #small for testing
@@ -35,6 +36,7 @@ datasetParams={'raw_data_filename': raw_data_filename, 'profiles': profiles, 'sc
                'ip_minimum': ip_minimum, 'ip_maximum': ip_maximum,
                'zero_fill_signals': zero_fill_signals,
                'exclude_ech': exclude_ech, 'exclude_ich': exclude_ich,
+               'ech_threshold': ech_threshold,
                'max_num_shots': max_num_shots}
 
 print(raw_data_filename)

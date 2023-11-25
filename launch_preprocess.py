@@ -24,7 +24,7 @@ slurm_text=f'''#!/bin/bash
 #SBATCH -c 32
 #SBATCH --mem 48G
 #SBATCH -o {log_filename}
-#SBATCH -t 05:00:00
+#SBATCH -t 12:00:00
 
 root_dir={root_dir}
 module load anaconda

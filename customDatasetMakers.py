@@ -44,7 +44,8 @@ def preprocess_data(processed_data_filename,
                     raw_data_filename,profiles,scalars,
                     shots=None,lookahead=1,
                     ip_minimum=None,ip_maximum=None,
-                    excluded_runs=[],exclude_ech=True, exclude_ich=True,
+                    excluded_runs=[],exclude_ech=True,ech_threshold=0.1,
+                    exclude_ich=True,
                     max_num_shots=np.inf,
                     zero_fill_signals=[]):
     if processed_data_filename is not None:
@@ -87,13 +88,13 @@ def preprocess_data(processed_data_filename,
                     if signal not in dataSettings.clipped_signals:
                         if not allTimesInBounds(normalized_dic[signal],dataSettings.deviation_cutoff):
                             within_deviation=False
-                ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=0.1))
+                ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=ech_threshold))
                 ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
                 run_ok=not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
                 if verbose:
                     if not within_deviation:
                         print(f'not within deviation_cutoff')
-                        for key in profiles+scalars:
+                        for key in needed_signals:
                             if not allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff):
                                 print(key)
                     if not ech_ok:
