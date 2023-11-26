@@ -95,17 +95,51 @@ class IanRNN(torch.nn.Module):
                 prev_output = this_output
                 padded_output[:,t_ind,:] = prev_output.squeeze(1)
         return padded_output
-
+#@torch.no_grad()
 class InverseLeakyReLU(torch.nn.Module):
     def __init__(self, slope=0.01):
         super(InverseLeakyReLU, self).__init__()
         self.slope = slope
-
     def forward(self, x):
         return torch.where(x < 0, x / self.slope, x)
 
+class InverseLinear(torch.nn.Module):
+    def __init__(self, linear_layer):
+        super(InverseLinear, self).__init__()
+
+        # Access the weight matrix and biases
+        weight_matrix = linear_layer.weight.data
+        biases = linear_layer.bias.data if linear_layer.bias is not None else None
+
+        # Check if the weight matrix is invertible
+        if torch.det(weight_matrix) == 0:
+            raise ValueError("The weight matrix is not invertible.")
+
+        # Compute the inverse
+        inverse_matrix = torch.inverse(weight_matrix)
+
+        # Create a parameter for the inverse matrix
+        self.inverse_matrix = torch.nn.Parameter(inverse_matrix, requires_grad=False)
+
+        # Create a parameter for the biases (if they exist)
+        if biases is not None:
+            self.biases = torch.nn.Parameter(biases, requires_grad=False)
+
+    def forward(self, x):
+        # Apply the inverse transformation
+        if torch.cuda.is_available():
+            x=x.to('cuda')
+        result = torch.matmul(x, self.inverse_matrix.t())  # Transpose for proper matrix multiplication
+
+        # Add biases if they exist
+        if hasattr(self, 'biases'):
+            result -= self.biases
+
+        return result
+
 class HiroLinear(torch.nn.Module):
     def __init__(self, input_dim, output_dim,
+                 negative_slope=0.01,
                  encoder_extra_layers=1,
                  decoder_extra_layers=1
                  ):
@@ -114,35 +148,57 @@ class HiroLinear(torch.nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         state_dim = output_dim
+        # see if this fixes issue with model.to(device) not sending all layers to cuda
+        self.LeakyReLU = torch.nn.LeakyReLU(0.01)
+        self.InverseLeakyReLU = InverseLeakyReLU(0.01)
 
+        # Define LeakyReLU activation
+        self.LeakyReLU = torch.nn.LeakyReLU()
+
+        # Create the encoder as a single Sequential list
         self.encoder = torch.nn.Sequential()
-        self.encoding_first_layer = torch.nn.Sequential(
+
+        # Add the first linear layer with LeakyReLU
+        self.encoder.add_module('encoding_first_layer', torch.nn.Sequential(
             torch.nn.Linear(state_dim, state_dim),
-            torch.nn.LeakyReLU(negative_slope=0.01))
-        self.encoder.append(self.encoding_first_layer)
-        self.encoding_extra_layers = torch.nn.Sequential()
+            self.LeakyReLU
+        ))
+
+        # Add extra layers with LeakyReLU
         for i in range(encoder_extra_layers):
-            self.encoding_extra_layers.append(torch.nn.Linear(state_dim, state_dim))
-            self.encoding_extra_layers.append(torch.nn.LeakyReLU(negative_slope=0.01))
-        self.encoder.append(self.encoding_extra_layers)
+            self.encoder.add_module(f'encoding_extra_layer_{i}', torch.nn.Sequential(
+                torch.nn.Linear(state_dim, state_dim),
+                self.LeakyReLU
+            ))
+
+        # Initialize the encoding linear layers with identity matrices
+        for i in range(encoder_extra_layers+1):
+            torch.nn.init.eye_(self.encoder[i][0].weight)
 
         # linear A and B matrices
         self.A = torch.nn.Linear(state_dim, state_dim)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
         self.B = torch.nn.Linear(actuator_length, state_dim)
 
-        self.decoder = torch.nn.Sequential()
-        self.decoding_first_layer = torch.nn.Sequential(
-            InverseLeakyReLU(slope=0.01),
-            torch.nn.Linear(state_dim, state_dim))
-        self.decoder.append(self.decoding_first_layer)
-        self.decoding_extra_layers = torch.nn.Sequential()
-        for i in range(decoder_extra_layers):
-            self.decoding_extra_layers.append(InverseLeakyReLU(slope=0.01))
-            self.decoding_extra_layers.append(torch.nn.Linear(state_dim, state_dim))
-        self.decoder.append(self.decoding_extra_layers)
+        #a = InverseLinear(self.encoder[0][0])
+        #self.InverseLinear = a.to('cuda')
+        '''self.InverseLinear = InverseLinear(self.encoder[0][0])
+        self.decoder = torch.nn.Sequential()'''
+
+        '''for j, layer in enumerate(reversed(self.encoder)):
+            if isinstance(layer, torch.nn.Sequential):
+                self.decoder.add_module(f'inverse_{j}', torch.nn.Sequential(
+                self.InverseLeakyReLU,
+                self.InverseLinear
+            ))'''
+        '''self.decoder.add_module(f'inverse', torch.nn.Sequential(
+                self.InverseLeakyReLU,
+                self.InverseLinear
+            ))'''
+        #self.to('cuda')
     def forward(self, padded_input, reset_probability=0, nwarmup=0):
         state_dim = self.output_dim
+        #state_dim = state_dim.cuda()
         x_t = padded_input[:, :, :state_dim]
         actuator_length = (self.input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
         u_t = padded_input[:, :, state_dim:state_dim+actuator_length]
@@ -150,7 +206,7 @@ class HiroLinear(torch.nn.Module):
         z_t = self.encoder(x_t)
         # inference without autoregression (20x faster)
         if reset_probability>=1:
-            z_t1=self.A(z_t) + self.B(u_t)
+            z_t1=self.A(z_t) + self.B(u_t1)
         # inference with probabilistic autoregression
         else:
             # number of times
@@ -167,11 +223,17 @@ class HiroLinear(torch.nn.Module):
                     # autoregress: use previous output with actuators
                     this_input=prev_output
                 ####### EVOLVE THE STATE
-                this_output=self.A(this_input) + self.B(u_t[:, t_ind, :].unsqueeze(1)) # is this the right actuators?
+                this_output=self.A(this_input) + self.B(u_t1[:, t_ind, :].unsqueeze(1))
                 ####### SAVE THE OUTPUT
                 prev_output = this_output
                 z_t1[:,t_ind,:] = prev_output.squeeze(1)
-        x_t1 = self.decoder(z_t1)
+        # decode signal
+        '''#the encoder has to be reversed!
+        for layer in self.encoder:
+            z_t1 = self.InverseLeakyReLU(z_t1)'''
+        first_inverse = InverseLinear(self.encoder[0][0])
+        x_t1 = first_inverse(self.InverseLeakyReLU(z_t1))
+        #x_t1 = self.decoder(z_t1)
         return x_t1
 
 # simple mapping, given just actuators over time try to predict profiles
