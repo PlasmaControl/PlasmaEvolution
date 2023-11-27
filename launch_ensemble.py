@@ -2,7 +2,7 @@ import os
 import configparser
 import shutil
 
-def launch_all(baseconfig_filename='model.cfg',submit_runs=False,n_models=1,hyperparam_adjustments=[]):
+def launch_all(baseconfig_filename='model.cfg',submit_runs=False,n_models=1,hyperparam_adjustments=[{}]):
     if n_models==1:
         ensemble_labels=['']
     else:
@@ -59,7 +59,7 @@ exit'''
 if __name__=='__main__':
     # increase n_models to do ensembling, submit_batch=False for testing in the function call below
     # empty array means use the base config file
-    hyperparam_adjustments=[]
+    hyperparam_adjustments=[{}]
     # an example of how to make hyperparameter adjustments for training models with different inputs across different training sets
     # (standard workflow for data+sim paper)
     if False:
