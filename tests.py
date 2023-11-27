@@ -109,36 +109,36 @@ class TestStateDicConversions(unittest.TestCase):
                                profiles,parameters,calculations,actuators,nx=3)
         self.assertTrue(np.allclose(start_state,end_state))
     def test_denormalization(self):
-        dic={'zipfit_etempfit_rho': [0.5,0.5], 'PETOT_astrainterpretiveECHZIPFIT': [0.5,0.5],
+        dic={'zipfit_etempfit_rho': [0.5,0.5], 'PETOT_astrainterpretive': [0.5,0.5],
              'qpsi': [2,2],
              'bt': 1, 'ip': 1e-6}
         denormed_dic=get_denormalized_dic(dic)
-        true_dic={'zipfit_etempfit_rho': [1,1], 'PETOT_astrainterpretiveECHZIPFIT': [1,1], 'qpsi': [0.5,0.5],
+        true_dic={'zipfit_etempfit_rho': [1,1], 'PETOT_astrainterpretive': [1,1], 'qpsi': [0.5,0.5],
                   'bt': 1, 'ip': 1}
         self.assert_numpy_dictionaries_equal(denormed_dic, true_dic)
         dic={'zipfit_etempfit_rho': [[0.5,0.5],[0.5,0.5]],
-             'PETOT_astrainterpretiveECHZIPFIT': [[0.5,0.5],[0.5,0.5]],
+             'PETOT_astrainterpretive': [[0.5,0.5],[0.5,0.5]],
              'qpsi': [[2,2],[2,2]],
              'bt': [1,1], 'ip': [1e-6,1e-6]}
         denormed_dic=get_denormalized_dic(dic)
-        true_dic={'zipfit_etempfit_rho': [[1,1],[1,1]], 'PETOT_astrainterpretiveECHZIPFIT': [[1,1],[1,1]],
+        true_dic={'zipfit_etempfit_rho': [[1,1],[1,1]], 'PETOT_astrainterpretive': [[1,1],[1,1]],
                   'qpsi': [[0.5,0.5],[0.5,0.5]],
                   'bt': [1,1], 'ip': [1,1]}
         self.assert_numpy_dictionaries_equal(denormed_dic, true_dic)
     def test_normalization(self):
-        dic={'zipfit_etempfit_rho': [2,2], 'PETOT_astrainterpretiveECHZIPFIT': [2,2],
+        dic={'zipfit_etempfit_rho': [2,2], 'PETOT_astrainterpretive': [2,2],
              'qpsi': [0.5,0.5],
              'bt': 1, 'ip': 1e6}
         normed_dic=get_normalized_dic(dic)
-        true_dic={'zipfit_etempfit_rho': [1,1], 'PETOT_astrainterpretiveECHZIPFIT': [1,1], 'qpsi': [2,2],
+        true_dic={'zipfit_etempfit_rho': [1,1], 'PETOT_astrainterpretive': [1,1], 'qpsi': [2,2],
                   'bt': 1, 'ip': 1}
         self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
         dic={'zipfit_etempfit_rho': [[2,2],[2,2]],
-             'PETOT_astrainterpretiveECHZIPFIT': [[2,2],[2,2]],
+             'PETOT_astrainterpretive': [[2,2],[2,2]],
              'qpsi': [[0.5,0.5],[0.5,0.5]],
              'bt': [1,1], 'ip': [1e6,1e6]}
         normed_dic=get_normalized_dic(dic)
-        true_dic={'zipfit_etempfit_rho': [[1,1],[1,1]], 'PETOT_astrainterpretiveECHZIPFIT': [[1,1],[1,1]],
+        true_dic={'zipfit_etempfit_rho': [[1,1],[1,1]], 'PETOT_astrainterpretive': [[1,1],[1,1]],
                   'qpsi': [[2,2],[2,2]],
                   'bt': [1,1], 'ip': [1,1]}
         self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
@@ -152,6 +152,15 @@ class TestTrainHelpers(unittest.TestCase):
                             masked_outputs=['two','three'], rho_bdry_index=3,
                             nx=4)
         truth=torch.Tensor([1,1,1,0,
+                            0,0,0,0,
+                            0,
+                            1])
+        self.assertTrue(torch.allclose(truth,mask))
+        # testing default of rho_bdry = None
+        mask=get_state_mask(profiles,parameters,
+                            masked_outputs=['two','three'],
+                            nx=4)
+        truth=torch.Tensor([1,1,1,1,
                             0,0,0,0,
                             0,
                             1])
@@ -287,7 +296,7 @@ class TestModels(unittest.TestCase):
                 model = torch.nn.DataParallel(model)
             print(f"Using {torch.cuda.device_count()} GPU(s)")
         model=HiroLinear(input_dim=state_length+2*actuator_length, output_dim=state_length,
-                     encoder_extra_layers=0,
+                     encoder_extra_layers=1,
                         )
         '''for name, param in model.named_parameters():
             # Just an example
@@ -302,6 +311,9 @@ class TestModels(unittest.TestCase):
         desired_output=torch.ones((2,2,2)) # [8,8]
         desired_output[:,0,:]*=19
         desired_output[:,1,:]*=21
+        '''import pdb; pdb.set_trace()
+        for layer in model.encoder:
+            print(layer[0].weight)'''
         model_output=model(test_input,reset_probability=1)
         #print(model_output)
         #self.assertTrue(torch.allclose(model_output,desired_output))

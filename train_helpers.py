@@ -5,7 +5,7 @@ from customDatasetMakers import get_state_indices_dic
 
 # 2D mask (to matrix-transform the state)
 def get_state_mask(profiles, parameters,
-                   masked_outputs=[], rho_bdry_index=-1,
+                   masked_outputs=[], rho_bdry_index=None,
                    nx=dataSettings.nx):
     indices_dic=get_state_indices_dic(profiles,parameters,calculations=[],nx=nx)
     state_length=0
@@ -15,8 +15,9 @@ def get_state_mask(profiles, parameters,
     masked_state_indices=[]
     for sig in masked_outputs:
         mask[indices_dic[sig]]=0
-    for sig in profiles:
-        mask[indices_dic[sig][rho_bdry_index:]]=0
+    if rho_bdry_index is not None:
+        for sig in profiles:
+            mask[indices_dic[sig][rho_bdry_index:]]=0
     return mask
 
 # projects a state mask across samples and times
