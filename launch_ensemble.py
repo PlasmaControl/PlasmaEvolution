@@ -41,7 +41,7 @@ def launch_all(baseconfig_filename='model.cfg',submit_runs=False,n_models=1,hype
 #SBATCH --mem 48G
 #SBATCH -G 1
 #SBATCH -o {log_filename}
-#SBATCH -t 05:00:00
+#SBATCH -t 5-00:00:00
 
 root_dir={root_dir}
 module load anaconda
