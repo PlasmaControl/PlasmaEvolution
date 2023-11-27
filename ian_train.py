@@ -36,6 +36,8 @@ profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs'].get('parameters','').split()
 calculations=config['inputs'].get('calculations','').split()
+save_epochs=config['optimization'].get('save_epochs','').split()
+save_epochs=[int(elem) for elem in save_epochs]
 autoregression_num_steps=config['optimization'].getfloat('autoregression_num_steps',1)
 autoregression_start_epoch=config['optimization'].getint('autoregression_start_epoch',int(n_epochs/4))
 autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch',int(3*n_epochs/4))
@@ -69,6 +71,7 @@ model=models[model_type](input_dim=state_length+calculation_length+2*actuator_le
                          **model_hyperparams)
 # dump to same location as the config filename, with .tar instead of .cfg
 output_filename=os.path.join(config['model']['output_dir'],f"{config['model']['output_filename_base']}.tar")
+epoch_output_filename = lambda epoch : os.path.join(config['model']['output_dir'],f"{config['model']['output_filename_base']}EPOCH{epoch}.tar")
 # you probably want to use the same config file you had used for the original model, though you might swap
 # out signals like for data+sim
 if tune_model:
@@ -220,7 +223,10 @@ for epoch in range(start_epoch, n_epochs):
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
-    if (not early_saving) or avg_val_losses[-1]==min(avg_val_losses):
+    if (not early_saving) or avg_val_losses[-1]==min(avg_val_losses) or (epoch in save_epochs):
+        this_output_filename=output_filename
+        if epoch in save_epochs:
+            this_output_filename=epoch_output_filename(epoch)
         print(f"Checkpoint")
         torch.save({
             'epoch': epoch,
@@ -235,7 +241,7 @@ for epoch in range(start_epoch, n_epochs):
             'actuators': actuators,
             'model_hyperparams': model_hyperparams,
             'exclude_ech': True
-        }, output_filename)
+        }, this_output_filename)
     prev_time=time.time()
 
 print(f'...took {(time.time()-start_time)/60:0.2f}min')
