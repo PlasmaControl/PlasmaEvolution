@@ -95,7 +95,7 @@ class IanRNN(torch.nn.Module):
                 prev_output = this_output
                 padded_output[:,t_ind,:] = prev_output.squeeze(1)
         return padded_output
-#@torch.no_grad()
+
 class InverseLeakyReLU(torch.nn.Module):
     def __init__(self, slope=0.01):
         super(InverseLeakyReLU, self).__init__()
@@ -128,7 +128,7 @@ class InverseLinear(torch.nn.Module):
     def forward(self, x):
         # Apply the inverse transformation
         if torch.cuda.is_available():
-            x=x.to('cuda')
+            x=x.to('cuda') # fixes issue of tensors being in CPU and cuda when autoregressively training
         result = torch.matmul(x, self.inverse_matrix.t())  # Transpose for proper matrix multiplication
 
         # Add biases if they exist
@@ -180,22 +180,6 @@ class HiroLinear(torch.nn.Module):
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
         self.B = torch.nn.Linear(actuator_length, state_dim)
 
-        #a = InverseLinear(self.encoder[0][0])
-        #self.InverseLinear = a.to('cuda')
-        '''self.InverseLinear = InverseLinear(self.encoder[0][0])
-        self.decoder = torch.nn.Sequential()'''
-
-        '''for j, layer in enumerate(reversed(self.encoder)):
-            if isinstance(layer, torch.nn.Sequential):
-                self.decoder.add_module(f'inverse_{j}', torch.nn.Sequential(
-                self.InverseLeakyReLU,
-                self.InverseLinear
-            ))'''
-        '''self.decoder.add_module(f'inverse', torch.nn.Sequential(
-                self.InverseLeakyReLU,
-                self.InverseLinear
-            ))'''
-        #self.to('cuda')
     def forward(self, padded_input, reset_probability=0, nwarmup=0):
         state_dim = self.output_dim
         #state_dim = state_dim.cuda()
@@ -228,12 +212,11 @@ class HiroLinear(torch.nn.Module):
                 prev_output = this_output
                 z_t1[:,t_ind,:] = prev_output.squeeze(1)
         # decode signal
-        '''#the encoder has to be reversed!
-        for layer in self.encoder:
-            z_t1 = self.InverseLeakyReLU(z_t1)'''
-        first_inverse = InverseLinear(self.encoder[0][0])
-        x_t1 = first_inverse(self.InverseLeakyReLU(z_t1))
-        #x_t1 = self.decoder(z_t1)
+        for layer in reversed(self.encoder):
+            z_t1 = self.InverseLeakyReLU(z_t1)
+            inverse = InverseLinear(layer[0])
+            z_t1 = inverse(z_t1)
+        x_t1 = z_t1
         return x_t1
 
 # simple mapping, given just actuators over time try to predict profiles
