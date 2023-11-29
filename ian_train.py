@@ -53,11 +53,11 @@ if config.has_section('config'):
     frozen_layers=config['tuning'].get('frozen_layers','').split()
     resume_training=config['tuning'].getboolean('resume_training',False)
     masked_outputs=config['tuning'].get('masked_outputs','').split()
-    rho_bdry_index=config['tuning'].get('rho_bdry_index',-1).split()
+    rho_bdry_index=config['tuning'].get('rho_bdry_index',None).split()
 else:
     tune_model=False
     masked_outputs=[]
-    rho_bdry_index=-1
+    rho_bdry_index=None
 # epoch to start on, should be 0 generally but can increase w/ tune_model to restart a model that stopped halfway
 # at the moment, by default tune_model will start the epochs where the previous left off
 start_epoch=0
