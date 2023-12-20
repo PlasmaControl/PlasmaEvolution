@@ -20,6 +20,8 @@ bucket_size=10000
 ensemble=False
 fake_actuators=False
 nwarmup=0
+epoch=250
+num_rollout_steps=1
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
@@ -39,13 +41,16 @@ plotted_parameters=parameters
 appendage=''
 if fake_actuators:
     appendage+='_FAKE'
-pickle_filename=f"rollout_{output_filename_base}{appendage}.pkl"
+if epoch is not None:
+    appendage+=f'_epoch{epoch}'
+appendage+=f'_{num_rollout_steps}steps'
+pickle_filename=f"/scratch/gpfs/jabbate/rollout_{output_filename_base}{appendage}.pkl"
 
-data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
+data_filename='/projects/EKOLEMEN/profile_predictor/preprocessed_data/ech_test_ALLECH_val.pkl' #config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
 
 x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True)
 
-considered_models = prediction_helpers.get_considered_models(config_filename, ensemble=ensemble)
+considered_models = prediction_helpers.get_considered_models(config_filename, ensemble=ensemble, epoch=epoch)
 
 test_x_buckets = make_bucket(x_test, bucket_size)
 test_y_buckets = make_bucket(y_test, bucket_size)
@@ -70,26 +75,33 @@ for sample_ind in range(len(x_test)):
     key=f'{shots[sample_ind]}_{int(start_time)}_{int(end_time)}'
     all_keys.append(key)
     all_info[key]={'truth': {'actuators': {}, 'profiles': {}, 'parameters': {}},
-                   'predictions': {'profiles': {}, 'parameters': {}}}
+                   'predictions': {'profiles': {}, 'parameters': {}},
+                   'normed_truth': {'actuators': {}, 'profiles': {}, 'parameters': {}},
+                   'normed_predictions': {'profiles': {}, 'parameters': {}}}
     all_info[key]['truth']['times']=np.array(true_times)
     # remember this returns actuators at the present AND NEXT time, hence -1 index below
     input_dic=state_to_dic(x_test[sample_ind], profiles, parameters, calculations, actuators)
     denormed_dic=get_denormalized_dic(input_dic)
     for sig in actuators:
         all_info[key]['truth']['actuators'][sig]=denormed_dic[sig][:,-1]
+        all_info[key]['normed_truth']['actuators'][sig]=input_dic[sig][:,-1]
     output_dic=state_to_dic(y_test[sample_ind], profiles, parameters)
     denormed_dic=get_denormalized_dic(output_dic)
     for sig in profiles:
         all_info[key]['truth']['profiles'][sig]=denormed_dic[sig]
+        all_info[key]['normed_truth']['profiles'][sig]=output_dic[sig]
     for sig in parameters:
         all_info[key]['truth']['parameters'][sig]=denormed_dic[sig]
+        all_info[key]['normed_truth']['parameters'][sig]=output_dic[sig]
     # predictions start after warmup; right now we just exclude the last timestep
     # but the ground truth for it is in y_test (the targets) if we want it later
     all_info[key]['predictions']['times']=true_times[nwarmup:]
     for sig in parameters:
         all_info[key]['predictions']['parameters'][sig]=np.zeros((len(considered_models),num_times-nwarmup))
+        all_info[key]['normed_predictions']['parameters'][sig]=np.zeros((len(considered_models),num_times-nwarmup))
     for sig in profiles:
         all_info[key]['predictions']['profiles'][sig]=np.zeros((len(considered_models),num_times-nwarmup,dataSettings.nx))
+        all_info[key]['normed_predictions']['profiles'][sig]=np.zeros((len(considered_models),num_times-nwarmup,dataSettings.nx))
 
 print(f'Finished writing ground truth, took {time.time()-prev_time:0.0f}s')
 evaluation_begin_time=time.time()
@@ -105,7 +117,7 @@ with torch.no_grad():
         # only save simulations after warmup is over
         for which_model in range(len(considered_models)):
             model=considered_models[which_model]
-            model_output=model(padded_x, reset_probability=0, nwarmup=nwarmup)
+            model_output=model(padded_x, reset_probability=float(1./num_rollout_steps), nwarmup=nwarmup, deterministic=True)
             unpadded_output=unpad_sequence(model_output, length_bucket, batch_first=True)
             for which_output,output in enumerate(unpadded_output):
                 # get the corresponding key
@@ -115,8 +127,10 @@ with torch.no_grad():
                 for sig in denormed_dic:
                     if sig in profiles:
                         all_info[key]['predictions']['profiles'][sig][which_model]=denormed_dic[sig][nwarmup:]
+                        all_info[key]['normed_predictions']['profiles'][sig][which_model]=output_dic[sig][nwarmup:]
                     elif sig in parameters:
                         all_info[key]['predictions']['parameters'][sig][which_model]=denormed_dic[sig][nwarmup:]
+                        all_info[key]['predictions']['parameters'][sig][which_model]=output_dic[sig][nwarmup:]
         print(f'Bucket {which_bucket+1}/{len(test_x_buckets)} took {time.time()-prev_time:0.0f}s')
         prev_time=time.time()
 

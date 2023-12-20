@@ -54,7 +54,8 @@ class IanRNN(torch.nn.Module):
     # rather than autoregressed input for the next step
     # nwarmup is number of steps for which it won't autoregress
     # padded_input is like (nsamples, ntimes, nstates)
-    def forward(self, padded_input, reset_probability=0, nwarmup=0):
+    # if deterministic, take exactly (1./reset_probability) steps at a time
+    def forward(self, padded_input, reset_probability=0, nwarmup=0, deterministic=False):
         # inference without autoregression (20x faster)
         if reset_probability>=1:
             embedding=self.encoder(padded_input)
@@ -71,8 +72,18 @@ class IanRNN(torch.nn.Module):
             padded_output=torch.zeros(padded_input[:,:,:self.output_dim].size())
             # maintain previous output for autoregression (start at true t=0 state)
             prev_output=padded_input[:,0,:self.output_dim].unsqueeze(1)
+            # only used for deterministic stepping
+            prev_tind=0
             for t_ind in range(seq_len):
-                if (t_ind<=nwarmup) or (torch.rand(1).item() < reset_probability):
+                reset_flag=False
+                if deterministic:
+                    reset_flag = ( (t_ind-prev_tind) >= int(1./reset_probability) )
+                else:
+                     reset_flag = (torch.rand(1).item() < reset_probability)
+                reset_flag=( (t_ind<=nwarmup) or reset_flag )
+                if reset_flag:
+                    prev_tind=t_ind
+                if reset_flag:
                     # predict from true state (don't autoregress this timestep)
                     this_input=padded_input[:,t_ind,:].unsqueeze(1)
                 else:

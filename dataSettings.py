@@ -62,7 +62,12 @@ sig_normalizations={
     'PITOT': {'mean': 0, 'std': 2},
     'PIBM': {'mean': 0, 'std': 2},
     'PETOT': {'mean': 0, 'std': 2},
-    'PEBM': {'mean': 0, 'std': 2}
+    'PEBM': {'mean': 0, 'std': 2},
+    'TE': {'mean': 0, 'std': 1},
+    'TI': {'mean': 0, 'std': 1},
+    'NI': {'mean': 0, 'std': 2},
+    'ANGF': {'mean': 0, 'std': 1e2},
+    'NE': {'mean': 0, 'std': 1}
 }
 sig_bounds={
     'HE': {'min': 0, 'max': 20},
@@ -78,9 +83,6 @@ if use_gyroBohm:
     normalizations['zipfit_edensfit_rho'] = {'mean': 0, 'std': 5e-6}
     #normalizations['zipfit_etempfit_rho'] = {'mean': 0, 'std': 1}
     normalizations['zipfit_itempfit_rho'] = {'mean': 0, 'std': 1}
-# if average normalized data for shot greater than this many deviations away,
-# exclude the shot from the dataset
-deviation_cutoff=10
 
 # ohmic power in Watts, to add to Pinj to get power for taue calculation
 ohmicPower=5e5

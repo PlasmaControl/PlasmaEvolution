@@ -34,7 +34,7 @@ class ModelStepper:
             normed_dic[sig]=torch.stack(normed_dic[sig])
         return dataSettings.get_denormalized_dic(normed_dic)
 
-def get_considered_models(config_filename, ensemble=True):
+def get_considered_models(config_filename, ensemble=True, epoch=None):
     config=configparser.ConfigParser()
     config.read(config_filename)
     output_filename_base=config['model']['output_filename_base']
@@ -43,11 +43,16 @@ def get_considered_models(config_filename, ensemble=True):
     profiles=config['inputs']['profiles'].split()
     actuators=config['inputs']['actuators'].split()
     parameters=config['inputs']['parameters'].split()
+    calculations=config['inputs']['calculations'].split()
     state_length=len(profiles)*dataSettings.nx+len(parameters)
     actuator_length=len(actuators)
+    calculation_length=len(calculations)*dataSettings.nx
     considered_models=[]
+    epoch_specification=''
+    if epoch is not None:
+        epoch_specification=f'EPOCH{epoch}'
     if ensemble:
-        all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}[0-9]*.tar'))
+        all_model_files=glob.glob(os.path.join(output_dir, f'{output_filename_base}[0-9]*{epoch_specification}.tar'))
         # exclude models under the median loss
         losses = []
         for model_file in all_model_files:
@@ -57,18 +62,19 @@ def get_considered_models(config_filename, ensemble=True):
         for model_file in all_model_files:
             saved_state=torch.load(model_file, map_location=torch.device('cpu'))
             if np.min([saved_state['val_losses'][-i] for i in range(10)])<max_loss:
-                model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
+                model=models[model_type](input_dim=state_length+calculation_length+2*actuator_length, output_dim=state_length,
                                          **saved_state['model_hyperparams'])
                 model.load_state_dict(saved_state['model_state_dict'])
                 considered_models.append(model)
         print(f'{len(considered_models)}/{len(all_model_files)} models used (i.e. only loss<{max_loss:0.2e})')
     else:
-        model_file=os.path.join(output_dir, f'{output_filename_base}.tar')
+        model_file=os.path.join(output_dir, f'{output_filename_base}{epoch_specification}.tar')
         saved_state=torch.load(model_file, map_location=torch.device('cpu'))
-        model=models[model_type](input_dim=state_length+2*actuator_length, output_dim=state_length,
+        model=models[model_type](input_dim=state_length+calculation_length+2*actuator_length, output_dim=state_length,
                                  **saved_state['model_hyperparams'])
         model.load_state_dict(saved_state['model_state_dict'])
         considered_models=[model]
+        print(f'Using {model_file}')
     return considered_models
 
 def get_predictions(normalized_true_state, considered_models, profiles, parameters, nwarmup=0):

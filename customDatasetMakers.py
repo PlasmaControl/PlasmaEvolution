@@ -6,6 +6,7 @@ import torch
 
 import dataSettings
 
+absolute_value_signals=['bt','ip','qpsi_EFIT01']
 verbose=False
 
 def profiles_ok(profiles, remove_all_zero_profiles=True):
@@ -47,6 +48,7 @@ def preprocess_data(processed_data_filename,
                     excluded_runs=[],exclude_ech=True,ech_threshold=0.1,
                     exclude_ich=True,
                     max_num_shots=np.inf,
+                    deviation_cutoff=10,
                     zero_fill_signals=[]):
     if processed_data_filename is not None:
         print(f'Building dataset {processed_data_filename}...')
@@ -55,6 +57,7 @@ def preprocess_data(processed_data_filename,
     start_time=time.time()
     # the below would be a bug sort of, want to deal with each profile individually
     remove_all_zero_profiles=True #not any([profile in zero_fill_signals for profile in profiles])
+    shot_exclusion_info={elem: 0 for elem in ['keys_exist', 'within_deviation', 'ech_ok', 'ich_ok', 'run_ok']}
     with h5py.File(raw_data_filename,'r') as f:
         times=f['times'][:]
         processed_data={key: [] for key in profiles+scalars+['shotnum','times']}
@@ -86,7 +89,7 @@ def preprocess_data(processed_data_filename,
                 within_deviation=True
                 for signal in needed_signals:
                     if signal not in dataSettings.clipped_signals:
-                        if not allTimesInBounds(normalized_dic[signal],dataSettings.deviation_cutoff):
+                        if not allTimesInBounds(normalized_dic[signal],deviation_cutoff):
                             within_deviation=False
                 ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=ech_threshold))
                 ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
@@ -95,7 +98,7 @@ def preprocess_data(processed_data_filename,
                     if not within_deviation:
                         print(f'not within deviation_cutoff')
                         for key in needed_signals:
-                            if not allTimesInBounds(normalized_dic[key],dataSettings.deviation_cutoff):
+                            if not allTimesInBounds(normalized_dic[key],deviation_cutoff):
                                 print(key)
                     if not ech_ok:
                         print(f"ech sum: {np.sum(f[shot]['ech_pwr_total'][:])}")
@@ -108,9 +111,15 @@ def preprocess_data(processed_data_filename,
                 for key in profiles+scalars:
                     if not key in f[shot].keys():
                         print(key)
+            shot_exclusion_info['keys_exist']+=int(not keys_exist)
+            shot_exclusion_info['within_deviation']+=int(not within_deviation)
+            shot_exclusion_info['ech_ok']+=int(not ech_ok)
+            shot_exclusion_info['ich_ok']+=int(not ich_ok)
+            shot_exclusion_info['run_ok']+=int(not run_ok)
             if keys_exist \
                and within_deviation \
                and ech_ok \
+               and ich_ok \
                and run_ok:
                 shot_included=False
                 for t_ind in range(len(times)-lookahead):
@@ -138,7 +147,8 @@ def preprocess_data(processed_data_filename,
                             else:
                                 tmp_profiles_arr[profile]=f[shot][profile][t_ind:t_ind+lookahead+1]
                         for scalar in scalars:
-                            if (scalar in zero_fill_signals) and (scalar not in f[shot]):
+                            # isnan thing mostly for tinj being nan in the AUG dataset if pinj is 0
+                            if (scalar in zero_fill_signals) and ( (scalar not in f[shot]) or (all(np.isnan(f[shot][scalar][:]))) ):
                                 tmp_scalars_arr[scalar]=np.zeros(lookahead+1)
                             else:
                                 tmp_scalars_arr[scalar]=f[shot][scalar][t_ind:t_ind+lookahead+1]
@@ -172,12 +182,15 @@ def preprocess_data(processed_data_filename,
     print(f'...took {(time.time()-start_time)/60:0.2f}min,',
           f'{included_shot_count}/{len(used_shots)} shots included,',
           f'{included_timestep_count}/{total_timestep_count} timesteps included')
+    print('Number of shots with issue: '+str(shot_exclusion_info))
     for signal in processed_data:
         processed_data[signal]=np.array(processed_data[signal])
         if signal in dataSettings.clipped_signals:
             processed_data[signal]=np.clip(processed_data[signal],
                                            dataSettings.clipped_signals[signal]['min'],
                                            dataSettings.clipped_signals[signal]['max'])
+        if signal in absolute_value_signals:
+            processed_data[signal]=np.abs(processed_data[signal])
     if processed_data_filename is not None:
         with open(processed_data_filename, 'wb') as f:
             pickle.dump(processed_data,f)
@@ -224,7 +237,7 @@ def preprocess_shot_times(processed_data_filename,
                 within_deviation=True
                 for signal in profiles+scalars:
                     if signal not in dataSettings.clipped_signals:
-                        if not allTimesInBounds(normalized_dic[signal],dataSettings.deviation_cutoff):
+                        if not allTimesInBounds(normalized_dic[signal],deviation_cutoff):
                             within_deviation=False
                 ech_ok=not (('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=0.1))
                 ich_ok=not (('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))

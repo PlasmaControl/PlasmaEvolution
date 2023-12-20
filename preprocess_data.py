@@ -23,6 +23,7 @@ zero_fill_signals=config['settings'].get('zero_fill_signals','').split()
 exclude_ech=config['settings'].getboolean('exclude_ech',True)
 ech_threshold=config['settings'].getfloat('ech_threshold',0.1)
 exclude_ich=config['settings'].getboolean('exclude_ich',True)
+deviation_cutoff=config['settings'].getfloat('deviation_cutoff',10)
 
 max_num_shots=config['shots'].getint('max_num_shots',200000) #small for testing
 min_shot=config['shots'].getint('min_shot',0)
@@ -37,7 +38,8 @@ datasetParams={'raw_data_filename': raw_data_filename, 'profiles': profiles, 'sc
                'zero_fill_signals': zero_fill_signals,
                'exclude_ech': exclude_ech, 'exclude_ich': exclude_ich,
                'ech_threshold': ech_threshold,
-               'max_num_shots': max_num_shots}
+               'max_num_shots': max_num_shots,
+               'deviation_cutoff': deviation_cutoff}
 
 print(raw_data_filename)
 train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in [val_index,test_index]]
