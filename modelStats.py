@@ -28,8 +28,8 @@ else:
 for model_ind, input_filename in enumerate(all_model_files):
     model=os.path.join(input_filename)
     saved_state=torch.load(model, map_location=torch.device('cpu'))
-    plt.plot(saved_state['train_losses'],c='r',label='train')
-    plt.plot(saved_state['val_losses'],c='b',label='validation')
+    plt.plot(saved_state['train_losses'][10:],c='r',label='train')
+    plt.plot(saved_state['val_losses'][10:],c='b',label='validation')
     if plot_ensemble:
         plt.text(len(saved_state['val_losses'])-1, saved_state['val_losses'][-1], os.path.basename(input_filename))
     if model_ind==0:

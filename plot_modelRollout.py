@@ -1,14 +1,17 @@
 import numpy as np
 import plotting_helpers
 import pickle
+import sys
 
-pickle_filename='YesGasNoDen.pkl'
+# run with argument of the pickle file, e.g. 'rollout_test.pkl'
+pickle_filename=sys.argv[1]
+#pickle_filename='AUGrollout_allECHwithSim.pkl'
 
 rho_ind=10
 
 with open(pickle_filename,'rb') as f:
     data=pickle.load(f)
-key=list(data.keys())[0]
+key=list(data.keys())[np.random.choice(len(data.keys()))]
 
 title=f"{key}_{pickle_filename.split('.pkl')[0]}"
 predicted_means={}
