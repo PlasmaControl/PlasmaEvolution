@@ -94,6 +94,10 @@ def preprocess_data(processed_data_filename,
                 ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=ech_threshold))
                 ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
                 run_ok=not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
+                shot_exclusion_info['within_deviation']+=int(not within_deviation)
+                shot_exclusion_info['ech_ok']+=int(not ech_ok)
+                shot_exclusion_info['ich_ok']+=int(not ich_ok)
+                shot_exclusion_info['run_ok']+=int(not run_ok)
                 if verbose:
                     if not within_deviation:
                         print(f'not within deviation_cutoff')
@@ -112,10 +116,6 @@ def preprocess_data(processed_data_filename,
                     if not key in f[shot].keys():
                         print(key)
             shot_exclusion_info['keys_exist']+=int(not keys_exist)
-            shot_exclusion_info['within_deviation']+=int(not within_deviation)
-            shot_exclusion_info['ech_ok']+=int(not ech_ok)
-            shot_exclusion_info['ich_ok']+=int(not ich_ok)
-            shot_exclusion_info['run_ok']+=int(not run_ok)
             if keys_exist \
                and within_deviation \
                and ech_ok \
@@ -291,6 +291,19 @@ def ian_dataset(processed_data_filename,
     # make sure pinj and ech_pwr_total are also in preprocessed data if you're going with this option
     if 'P_AUXILIARY' in actuators:
         processed_data['P_AUXILIARY']=processed_data['pinj']+1e-3*processed_data['ech_pwr_total']
+    if ('zeff_rho' in profiles) and ('zeff_rho' not in processed_data):
+        # must be <1/Z_c=1/6, >>~ 2% (good estimate for f_C at DIII-D)
+        impurity_fraction_maximum=0.1
+        Zc=6
+        Zmain=1
+        ne=processed_data['zipfit_edensfit_rho'][()]
+        nc=processed_data['zipfit_zdensfit_rho'][()]
+        # make sure impurity density (poorly measured by CXR, especially at edge)
+        # leaves at least a little room for impurity ions when considering
+        # quasineutrality.
+        nc=np.minimum(nc, impurity_fraction_maximum * ne)
+        nmain=(ne - Zc * nc) / Zmain
+        processed_data['zeff_rho']=(nmain * Zmain**2 + nc * Zc**2) / ne
     # normalize
     processed_data=dataSettings.get_normalized_dic(processed_data, excluded_sigs=['shotnum', 'times'])
     in_sample,in_sample,out_sample,out_sample,shots,times=[],[],[],[],[],[]

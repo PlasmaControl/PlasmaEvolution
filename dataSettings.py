@@ -18,7 +18,6 @@ normalizations={
     'zipfit_zdensfit_rho': {'mean': 0, 'std': 2},
     'pres_EFIT01': {'mean': 0, 'std': 1e4},
     'pinj': {'mean': 0, 'std': 2e3},
-    'P_AUXILIARY': {'mean': 0, 'std': 2e3}, # custom signals, defined in customDatasetMakers ad hoc
     'tinj': {'mean': 0, 'std': 2},
     'ipsiptargt': {'mean': 0, 'std': 1},
     'ip': {'mean': 0, 'std': 1e6},
@@ -49,7 +48,9 @@ normalizations={
     'Ne_tot': {'mean': 0, 'std': 1e2},
     'He_tot': {'mean': 0, 'std': 1e2},
     'N_tot': {'mean': 0, 'std': 1e2},
-    'ech_pwr_total': {'mean': 0, 'std': 1e6}
+    'ech_pwr_total': {'mean': 0, 'std': 1e6},
+    'P_AUXILIARY': {'mean': 0, 'std': 2e3},       # custom signals,
+    'zeff_rho': {'mean': 0, 'std': 2}, # defined in customDatasetMakers ad hoc
     }
 clipped_signals={}
 
@@ -73,7 +74,7 @@ sig_bounds={
     'HE': {'min': 0, 'max': 20},
     'XI': {'min': 0, 'max': 20}
 }
-for astrasim in ['astrainterpretive']:
+for astrasim in ['astrainterpretive','astrapredictEPEDNNTGLFNNfullyZIPFIT']:
     for sig in sig_normalizations:
         normalizations[f'{sig}_{astrasim}']=sig_normalizations[sig]
     for sig in sig_bounds:

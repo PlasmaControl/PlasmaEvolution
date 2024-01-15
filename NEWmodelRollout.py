@@ -16,12 +16,21 @@ from customDatasetMakers import state_to_dic
 
 import time
 
+# JOE: below is for comparing against sims that I know are 10 steps long
+astra_sim='astrapredictEPEDNNTGLFNNfullyZIPFIT'
+extra_truth_profiles=[f'TE_{astra_sim}',
+                      f'TI_{astra_sim}',
+                      f'NE_{astra_sim}',
+                      f'ANGF_{astra_sim}']
+########################################################################
+
 bucket_size=10000
 ensemble=False
 fake_actuators=False
-nwarmup=0
-epoch=250
-num_rollout_steps=1
+nwarmup=3
+epoch=None
+num_rollout_steps=400
+min_sample_length=13 #num_rollout_steps+nwarmup
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
@@ -34,9 +43,6 @@ profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs'].get('parameters','').split()
 calculations=config['inputs'].get('calculations','').split()
-plotted_profiles=profiles
-plotted_actuators=actuators
-plotted_parameters=parameters
 
 appendage=''
 if fake_actuators:
@@ -44,11 +50,16 @@ if fake_actuators:
 if epoch is not None:
     appendage+=f'_epoch{epoch}'
 appendage+=f'_{num_rollout_steps}steps'
-pickle_filename=f"/scratch/gpfs/jabbate/rollout_{output_filename_base}{appendage}.pkl"
 
-data_filename='/projects/EKOLEMEN/profile_predictor/preprocessed_data/ech_test_ALLECH_val.pkl' #config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
+# ip_400_600 ip_700_900 ip_1000_1200 ip_1300_10000
+#which_dataset='nativeValSet'
+#data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
+which_dataset='ip_1000_1200train'
+data_filename=f'/projects/EKOLEMEN/profile_predictor/final_paper/{which_dataset}.pkl'
+pickle_filename=f"/scratch/gpfs/jabbate/paper_results/rollout_{output_filename_base}{appendage}_{which_dataset}.pkl"
 
-x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True)
+x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True,
+                                                              min_sample_length=min_sample_length)
 
 considered_models = prediction_helpers.get_considered_models(config_filename, ensemble=ensemble, epoch=epoch)
 
