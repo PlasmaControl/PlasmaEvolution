@@ -42,19 +42,22 @@ datasetParams={'raw_data_filename': raw_data_filename, 'profiles': profiles, 'sc
                'deviation_cutoff': deviation_cutoff}
 
 print(raw_data_filename)
-train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in [val_index,test_index]]
-val_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in [val_index]]
-test_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in [test_index]]
-train_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'train.pkl',shots=train_shots,**datasetParams)
-val_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'val.pkl',shots=val_shots,**datasetParams)
-test_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'test.pkl',shots=test_shots,**datasetParams)
 # for ASTRA-TRANSP (or generally being careful about extrapolation) exclude the runs associated with shots you'll test on
 if False:
     datasetParams['excluded_runs']=[]
 # for testing individual shot_times (usually used as the test after training with excluded runs associated with these)
-if False:
+elif False:
     shots=[175970, 175970]
     time_bounds=[[1000,1400], [2280,2680]]
-    customDatasetMakers.preprocess_shot_times('small_test.pkl',
-                                              shots=shots, time_bounds=time_bounds,
-                                              **datasetParams)
+    shots=[170180, 170180]
+    time_bounds=[[1400,1700], [1500,1800]]
+    customDatasetMakers.preprocess_data('small_test.pkl',
+                                        shots=shots, time_bounds=time_bounds,
+                                        **datasetParams)
+else:
+    train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in [val_index,test_index]]
+    val_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in [val_index]]
+    test_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in [test_index]]
+    train_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'train.pkl',shots=train_shots,**datasetParams)
+    val_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'val.pkl',shots=val_shots,**datasetParams)
+    test_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'test.pkl',shots=test_shots,**datasetParams)

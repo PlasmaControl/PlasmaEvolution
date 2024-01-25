@@ -41,15 +41,20 @@ def check_signal_off(signal, threshold=0.1):
 # print(str(runs))
 
 # also note zero_fill_signals won't have outliers excluded
+
+# time_bounds can be a list of [[start_time, end_time], ...]
+# where start_time is the first time to predict from
+#       end_time is the last time we predict from
 def preprocess_data(processed_data_filename,
                     raw_data_filename,profiles,scalars,
                     shots=None,lookahead=1,
                     ip_minimum=None,ip_maximum=None,
-                    excluded_runs=[],exclude_ech=True,ech_threshold=0.1,
+                    excluded_runs=[],exclude_ech=False,ech_threshold=0.1,
                     exclude_ich=True,
                     max_num_shots=np.inf,
                     deviation_cutoff=10,
-                    zero_fill_signals=[]):
+                    zero_fill_signals=[],
+                    time_bounds=None):
     if processed_data_filename is not None:
         print(f'Building dataset {processed_data_filename}...')
     else:
@@ -68,12 +73,14 @@ def preprocess_data(processed_data_filename,
         if shots is None:
             used_shots=available_shots
         else:
-            used_shots=np.intersect1d(available_shots,[str(shot) for shot in shots])
+            # allow duplicates
+            used_shots=[str(shot) for shot in shots if str(shot) in available_shots]
+            #used_shots=np.intersect1d(available_shots,[str(shot) for shot in shots])
         if verbose:
             print(used_shots)
         prev_time=time.time()
         included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
-        SHOTS_PER_PRINT = 1000
+        SHOTS_PER_PRINT = 100
         for nshot,shot in enumerate(used_shots):
             if verbose:
                 print(shot)
@@ -122,7 +129,16 @@ def preprocess_data(processed_data_filename,
                and ich_ok \
                and run_ok:
                 shot_included=False
-                for t_ind in range(len(times)-lookahead):
+                if time_bounds is None:
+                    time_inds=range(len(times)-lookahead)
+                else:
+                    initial_time=time_bounds[nshot][0]
+                    end_time=time_bounds[nshot][1]
+                    start_ind=np.argmin(np.abs(times-initial_time))
+                    # end_time is the last time we predict from
+                    end_ind=np.argmin(np.abs(times-end_time))
+                    time_inds=range(start_ind, end_ind)
+                for t_ind in time_inds:
                     total_timestep_count+=1
                     ip_in_bounds=True
                     if (ip_minimum is not None) or (ip_maximum is not None):
@@ -206,7 +222,9 @@ def preprocess_shot_times(processed_data_filename,
                           lookahead=1,
                           ip_minimum=None,ip_maximum=None,
                           excluded_runs=[],exclude_ech=True, exclude_ich=True,
-                          max_num_shots=np.inf):
+                          max_num_shots=np.inf,
+                          deviation_cutoff=10,
+                          zero_fill_signals=[]):
     print(f'Building dataset {processed_data_filename}...')
     start_time=time.time()
     with h5py.File(raw_data_filename,'r') as f:
