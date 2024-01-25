@@ -44,7 +44,7 @@ autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch
 if autoregression_num_steps<1:
     autoregression_num_steps=1
 # temporary to maintain back-compatibility
-if config.has_section('config'):
+if config.has_section('tuning'):
     tune_model=config['tuning'].getboolean('tune_model',False)
     if tune_model:
         if 'model_to_tune_filename_base' not in config['tuning']:
@@ -53,7 +53,7 @@ if config.has_section('config'):
     frozen_layers=config['tuning'].get('frozen_layers','').split()
     resume_training=config['tuning'].getboolean('resume_training',False)
     masked_outputs=config['tuning'].get('masked_outputs','').split()
-    rho_bdry_index=config['tuning'].get('rho_bdry_index',None).split()
+    rho_bdry_index=config['tuning'].get('rho_bdry_index',None)
 else:
     tune_model=False
     masked_outputs=[]
@@ -223,7 +223,19 @@ for epoch in range(start_epoch, n_epochs):
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
-    if (not early_saving) or avg_val_losses[-1]==min(avg_val_losses) or (epoch in save_epochs):
+    # the task gets harder for curriculum learning until autoregression_end_epoch, making it hard to compare
+    # loss from different epochs
+    # if we're doing autoregression, then until the end epoch just save every step
+    if autoregression_num_steps<=1:
+        relevant_val_losses=avg_val_losses
+    else:
+        relevant_val_losses=avg_val_losses[autoregression_end_epoch:]+[avg_val_losses[-1]]
+    best_epoch= ( avg_val_losses[-1]==min(relevant_val_losses) )
+    # if we don't yet have a .tar file, e.g. if we're resuming training into a new filename,
+    # automatically save the first step
+    if not os.path.exists(output_filename):
+        best_epoch=True
+    if (not early_saving) or best_epoch or (epoch in save_epochs):
         this_output_filename=output_filename
         if epoch in save_epochs:
             this_output_filename=epoch_output_filename(epoch)
