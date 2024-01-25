@@ -45,7 +45,8 @@ if __name__=='__main__':
     hyperparam_adjustments=[{}]
     # an example of how to make hyperparameter adjustments for training models with different inputs across different training sets
     # (standard workflow for data+sim paper)
-    if False:
+    if True:
+        hyperparam_adjustments=[]
         # dealing with training set
         preprocessed_filename_dic={'all': {'ip_minimum': 0.0e6, 'ip_maximum': 10.0e6},
                                    'ip_0_900': {'ip_minimum': 0.0e6, 'ip_maximum': 0.9e6},
@@ -56,7 +57,7 @@ if __name__=='__main__':
         for which_trainset in preprocessed_filename_dic:
             hyperparam_adjustments.append(
                 {
-                    'logistics': {'output_filename_base': which_trainset},
+                    'logistics': {'output_filename_base': f'aug{which_trainset}'},
                     'settings': preprocessed_filename_dic[which_trainset]
                 }
             )

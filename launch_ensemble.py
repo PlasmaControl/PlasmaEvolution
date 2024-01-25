@@ -13,7 +13,7 @@ def launch_ensemble(baseconfig_filename='model.cfg',submit_runs=False,n_models=1
     for hyperparam_adjustment in hyperparam_adjustments:
         for category in hyperparam_adjustment:
             for hyperparam in hyperparam_adjustment[category]:
-                config[category][hyperparam]=hyperparam_adjustment[category][hyperparam]
+                config[category][hyperparam]=str(hyperparam_adjustment[category][hyperparam])
         output_dir=config['model']['output_dir']
         output_filename_base=config['model']['output_filename_base']
         # if ensembling, keep copy of config file without ensemble_number as the baseline used
@@ -64,21 +64,26 @@ if __name__=='__main__':
     hyperparam_adjustments=[{}]
     # an example of how to make hyperparameter adjustments for training models with different inputs across different training sets
     # (standard workflow for data+sim paper)
-    if False:
+    if True:
+        hyperparam_adjustments=[]
         # dealing with training set
-        preprocessed_filename_dic={'ip_0_900': 'ip_0_900', 'ip_0_1200': 'ip_0_1200', 'all': 'all'}
+        #preprocessed_filename_dic={'augip_0_900': 'augip_0_900', 'augip_0_1200': 'augip_0_1200'} #, 'all': 'all'}
+        preprocessed_filename_dic={'ip_0_1200': 'ip_0_1200', 'all': 'all'} #{'ip_0_900': 'ip_0_900', 'ip_0_1200': 'ip_0_1200', 'all': 'all'}
         # dealing with inputs
         shared_actuators=['D_tot', 'pinj', 'tinj', 'ip', 'bt', 'ech_pwr_total', 'tribot_EFIT01', 'tritop_EFIT01', 'kappa_EFIT01', 'aminor_EFIT01', 'volume_EFIT01', 'rmaxis_EFIT01']
         shared_calculations=[]
-        actuators_dic={'WITHdssdenest': shared_actuators+['dssdenest'], 'NOdssdenest': shared_actuators}
+        actuators_dic={'WITHdssdenest': shared_actuators+['dssdenest'], 'NOdssdenest': shared_actuators} #{'NOdssdenest': shared_actuators}
         #calculations_dic={'noSim': no_sim_calculations, 'withSim': sim_calculations}
         hyperparam_adjustments=[]
         for which_trainset in preprocessed_filename_dic: #['allECH', 'ECH1MW', 'noECH']:
             for which_inputs in actuators_dic:
                 hyperparam_adjustments.append(
                     {
-                        'model': {'output_filename_base': f'{which_trainset}{which_inputs}'},
+                        ##### ADDING THIS TO START RERUNNING THEM #####
+                        'tuning': {'tune_model': True, 'resume_training': True, 'model_to_tune_filename_base': f'{which_trainset}{which_inputs}_RESUMED'},
+                        'model': {'output_filename_base': f'{which_trainset}{which_inputs}_RESUMED2'},
                         'preprocess': {'preprocessed_data_filenamebase': f'/projects/EKOLEMEN/profile_predictor/final_paper/{preprocessed_filename_dic[which_trainset]}'},
+                        'optimization': {'bucket_size': 2000},
                         'inputs':
                         {
                             'actuators': '\n'.join(actuators_dic[which_inputs])
