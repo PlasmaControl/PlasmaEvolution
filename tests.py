@@ -108,6 +108,14 @@ class TestStateDicConversions(unittest.TestCase):
         end_state=dic_to_state(dic,
                                profiles,parameters,calculations,actuators,nx=3)
         self.assertTrue(np.allclose(start_state,end_state))
+
+class TestNormalizations(unittest.TestCase):
+    def assert_numpy_dictionaries_equal(self, first_dic, second_dic):
+        # ensures lists have same number of elements regardless of order
+        self.assertCountEqual(first_dic.keys(),second_dic.keys())
+        for sig in first_dic:
+            self.assertEqual(np.shape(second_dic[sig]),np.shape(first_dic[sig]))
+            self.assertTrue(np.allclose(second_dic[sig],first_dic[sig]))
     def test_denormalization(self):
         dic={'zipfit_etempfit_rho': [0.5,0.5], 'PETOT_astrainterpretive': [0.5,0.5],
              'qpsi': [2,2],
@@ -142,6 +150,78 @@ class TestStateDicConversions(unittest.TestCase):
                   'qpsi': [[2,2],[2,2]],
                   'bt': [1,1], 'ip': [1,1]}
         self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
+    def test_gyrobohm_normalization(self):
+        dic={'zipfit_trotfit_rho': [200,100], 'zipfit_edensfit_rho': [2,2], 'volume_EFIT01': 10, 'rmaxis_EFIT01': 1, 'aminor_EFIT01': 1, 'ip': 1e6,
+             'times': 10, 'shotnum': 10}
+        normed_dic=get_normalized_dic(dic, use_fancy_normalization=True)
+        true_dic={'zipfit_trotfit_rho': [1,0.5], 'zipfit_edensfit_rho': [1,1], 'volume_EFIT01': 1, 'rmaxis_EFIT01': 1, 'aminor_EFIT01': 1, 'ip': 1,
+                  'times': 10, 'shotnum': 10}
+        self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
+        identity_dic=get_denormalized_dic(normed_dic,use_fancy_normalization=True)
+        self.assert_numpy_dictionaries_equal(dic, identity_dic)
+        dic={'zipfit_trotfit_rho': [[200,100],[200,100]],
+             'zipfit_edensfit_rho': [[2,2],[2,2]],
+             'volume_EFIT01': [10,10],
+             'rmaxis_EFIT01': [1,1],
+             'ip': [1e6,1e6],
+             'aminor_EFIT01': [1,1]}
+        normed_dic=get_normalized_dic(dic,use_fancy_normalization=True)
+        true_dic={'zipfit_trotfit_rho': [[1,0.5],[1,0.5]],
+                  'zipfit_edensfit_rho': [[1,1],[1,1]],
+                  'volume_EFIT01': [1,1],
+                  'rmaxis_EFIT01': [1,1],
+                  'ip': [1,1],
+                  'aminor_EFIT01': [1,1]}
+        self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
+        identity_dic=get_denormalized_dic(normed_dic,use_fancy_normalization=True)
+        self.assert_numpy_dictionaries_equal(dic, identity_dic)
+        # 3 samples, 2 timesteps, 4 rho points -- for normalization of preprocessed data
+        dic={'zipfit_trotfit_rho': [[[200,100,100,100],[200,100,100,100]],
+                                    [[200,100,100,100],[200,100,100,100]],
+                                    [[400,100,100,100],[200,100,100,100]]],
+             'zipfit_edensfit_rho': [[[2,2,2,2],[2,2,2,2]],
+                                     [[2,2,2,2],[2,2,2,2]],
+                                     [[2,2,2,2],[2,2,2,2]]],
+             'volume_EFIT01': [[20,20],
+                               [20,20],
+                               [20,20]],
+             'rmaxis_EFIT01': [[1,1],
+                               [1,1],
+                               [1,1]],
+             'aminor_EFIT01': [[2,2],
+                               [2,2],
+                               [2,2]],
+             'pinj': [[8000,8000],
+                      [8000,8000],
+                      [8000,8000]],
+             'ip': [[2e6,2e6],
+                    [2e6,2e6],
+                    [2e6,2e6]]}
+        normed_dic=get_normalized_dic(dic,use_fancy_normalization=True)
+        true_dic={'zipfit_trotfit_rho': [[[2,1,1,1],[2,1,1,1]],
+                                         [[2,1,1,1],[2,1,1,1]],
+                                         [[4,1,1,1],[2,1,1,1]]],
+                  'zipfit_edensfit_rho': [[[2,2,2,2],[2,2,2,2]],
+                                          [[2,2,2,2],[2,2,2,2]],
+                                          [[2,2,2,2],[2,2,2,2]]],
+                  'volume_EFIT01': [[2,2],
+                                    [2,2],
+                                    [2,2]],
+                  'rmaxis_EFIT01': [[1,1],
+                                    [1,1],
+                                    [1,1]],
+                  'aminor_EFIT01': [[2,2],
+                                    [2,2],
+                                    [2,2]],
+                  'pinj': [[2,2],
+                           [2,2],
+                           [2,2]],
+                  'ip': [[2,2],
+                         [2,2],
+                         [2,2]]}
+        self.assert_numpy_dictionaries_equal(normed_dic, true_dic)
+        identity_dic=get_denormalized_dic(normed_dic,use_fancy_normalization=True)
+        self.assert_numpy_dictionaries_equal(dic, identity_dic)
 
 class TestTrainHelpers(unittest.TestCase):
     def test_state_mask(self):

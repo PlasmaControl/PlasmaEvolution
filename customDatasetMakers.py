@@ -90,6 +90,8 @@ def preprocess_data(processed_data_filename,
                 if sig in needed_signals:
                     needed_signals.remove(sig)
             if np.all([key in f[shot].keys() for key in needed_signals]):
+                # note: gyrobohm step is later, so threshold will be on raw signals and not gyrobohm itself
+                # also zeff won't be thresholded
                 normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in needed_signals})
                 keys_exist=True
             if keys_exist:
@@ -213,96 +215,11 @@ def preprocess_data(processed_data_filename,
     else:
         return processed_data
 
-# lets you included nan for autoregressive predictions
-# shots is a list of shots; initial_times is a list of start times (in ms);
-# end_times is a list of end times (in ms)
-def preprocess_shot_times(processed_data_filename,
-                          raw_data_filename,profiles,scalars,
-                          shots, time_bounds,
-                          lookahead=1,
-                          ip_minimum=None,ip_maximum=None,
-                          excluded_runs=[],exclude_ech=True, exclude_ich=True,
-                          max_num_shots=np.inf,
-                          deviation_cutoff=10,
-                          zero_fill_signals=[]):
-    print(f'Building dataset {processed_data_filename}...')
-    start_time=time.time()
-    with h5py.File(raw_data_filename,'r') as f:
-        times=f['times'][:]
-        processed_data={key: [] for key in profiles+scalars+['shotnum','times']}
-        recorded_shots, recorded_times = [],[]
-        available_shots = list(f.keys())
-        available_shots.remove('times')
-        available_shots.remove('spatial_coordinates')
-        prev_time=time.time()
-        included_shot_count,total_timestep_count,included_timestep_count = 0,0,0
-        SHOTS_PER_PRINT = 1000
-        shots=[str(shot) for shot in shots]
-        for nshot,shot in enumerate(shots):
-            if shot not in available_shots:
-                print('shot not in {raw_data_filename}, going to next shot')
-                continue
-            initial_time=time_bounds[nshot][0]
-            end_time=time_bounds[nshot][1]
-            start_ind=np.argmin(np.abs(times-initial_time))
-            end_ind=np.argmin(np.abs(times-end_time))
-            print(shot)
-            keys_exist=False
-            if np.all([key in f[shot].keys() for key in profiles+scalars]):
-                normalized_dic=dataSettings.get_normalized_dic({key: f[shot][key][:] for key in profiles+scalars})
-                keys_exist=True
-            if keys_exist:
-                within_deviation=True
-                for signal in profiles+scalars:
-                    if signal not in dataSettings.clipped_signals:
-                        if not allTimesInBounds(normalized_dic[signal],deviation_cutoff):
-                            within_deviation=False
-                ech_ok=not (('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=0.1))
-                ich_ok=not (('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
-                if verbose:
-                    if not within_deviation:
-                        print(f'not within deviation_cutoff')
-                    if not ech_ok:
-                        print(f"ech sum: {np.sum(f[shot]['ech_pwr_total'][:])}")
-                    if not ich_ok:
-                        print(f"ich sum: {np.sum(f[shot]['ich_pwr_total'][:])}")
-            elif verbose:
-                print('missing key(s):')
-            if not np.all([profiles_ok(f[shot][profile][start_ind]) for profile in profiles]):
-                print(f"{shot} bad profiles, going to next shot")
-                continue
-            if keys_exist:
-                for t_ind in range(start_ind, end_ind+1):
-                    tmp_profiles_arr={}
-                    tmp_scalars_arr={}
-                    for profile in profiles:
-                        tmp_profiles_arr[profile]=f[shot][profile][t_ind:t_ind+lookahead+1]
-                    for scalar in scalars:
-                        tmp_scalars_arr[scalar]=f[shot][scalar][t_ind:t_ind+lookahead+1]
-                    if np.all([scalars_ok(tmp_scalars) for tmp_scalars in tmp_scalars_arr.values()]):
-                        for profile in profiles:
-                            processed_data[profile].append(tmp_profiles_arr[profile])
-                        for scalar in scalars:
-                            processed_data[scalar].append(tmp_scalars_arr[scalar])
-                        processed_data['shotnum'].append(np.array([int(shot)]*(lookahead+1)))
-                        processed_data['times'].append(times[t_ind:t_ind+lookahead+1])
-                        included_timestep_count+=1
-                    else:
-                        print(f'Shot {shot} stopping at {times[t_ind]} (was supposed to be {times[start_ind]}-{times[end_ind]})')
-                        break
-            if not (nshot+1) % SHOTS_PER_PRINT:
-                print(f'{(nshot+1):5d}/{len(shots)} shots ({(time.time()-prev_time):0.2e}s)')
-                prev_time=time.time()
-    print(f'...took {(time.time()-start_time)/60:0.2f}min,')
-    for signal in processed_data:
-        processed_data[signal]=np.array(processed_data[signal])
-    with open(processed_data_filename, 'wb') as f:
-        pickle.dump(processed_data,f)
-
 def ian_dataset(processed_data_filename,
                 profiles,parameters=[],calculations=[],actuators=[],
                 min_sample_length=6,
-                sort_by_size=True):
+                sort_by_size=True,
+                use_fancy_normalization=False):
     with open(processed_data_filename, 'rb') as f:
         processed_data=pickle.load(f)
     # pinj in kW, ech in MW; P_AUXILIARY in kW
@@ -323,7 +240,8 @@ def ian_dataset(processed_data_filename,
         nmain=(ne - Zc * nc) / Zmain
         processed_data['zeff_rho']=(nmain * Zmain**2 + nc * Zc**2) / ne
     # normalize
-    processed_data=dataSettings.get_normalized_dic(processed_data, excluded_sigs=['shotnum', 'times'])
+    processed_data=dataSettings.get_normalized_dic(processed_data,
+                                                   use_fancy_normalization=use_fancy_normalization)
     in_sample,in_sample,out_sample,out_sample,shots,times=[],[],[],[],[],[]
     in_samples,out_samples=[],[]
     previous_processed_sample_ind, processed_sample_ind=0,0

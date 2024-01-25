@@ -44,178 +44,17 @@ def extract_chains(array, min_length=1):
         chain_indices.append((start_index, index))
     return chains, chain_indices
 
-# def get_sim_info(sim_name, sim_dir, min_length, predicted_sigs=['TE','TI','UPAR','NE'],
-#                  ntimestep_delay=0):
-#     all_info={}
-#     h5_path=os.path.join(sim_dir,sim_name+'.h5')
-#     name_map={'TE': 'zipfit_etempfit_rho', 'TI': 'zipfit_itempfit_rho', 'UPAR': 'zipfit_trotfit_rho', 'NE': 'zipfit_edensfit_rho', 'MU': 'qpsi_EFIT01'}
-#     experiment_names={'TE': 'TEX', 'TI': 'TIX', 'UPAR': 'VTORX', 'NE': 'NEX', 'MU': 'MUX'}
-#     with h5py.File(h5_path) as f:
-#         print('loading h5')
-#         shots=list(f.keys())
-#         print('h5 loaded, reading in simulation data')
-#         begin_time=time.time()
-#         prev_time=begin_time
-#         for nshot,shot in enumerate(shots):
-#             if shot not in all_info:
-#                 _,indices=extract_chains(f[shot][f'TE_{sim_name}'][:,0],min_length=min_length)
-#                 for i in range(len(indices)):
-#                     start_index=indices[i][0]+ntimestep_delay
-#                     # subtract lookahead: end time is last time we predict from
-#                     #   which is lookahead before the last predicted time
-#                     lookahead=1
-#                     end_index=indices[i][1] #-lookahead
-#                     ###
-#                     start_time=int(start_index*dataSettings.DT*1e3)
-#                     end_time=int((end_index-lookahead)*dataSettings.DT*1e3)
-#                     key=f'{shot}_{start_time}_{end_time}'
-#                     all_info[key]={'truth': {'profiles': {}}, 'predictions': {'profiles': {}}}
-#                     # +1 becuase the first timestep prediction and truth are equal
-#                     all_info[key]['predictions']['times']=np.arange(start_index+1,end_index)*dataSettings.DT*1.e3
-#                     all_info[key]['truth']['times']=np.arange(start_index,end_index)*dataSettings.DT*1.e3
-#                     #all_info[key]['min_ip']=min(f[shot][f'IPL_{sim_name}'][start_index:end_index])
-#                     #all_info[key]['max_ip']=max(f[shot][f'IPL_{sim_name}'][start_index:end_index])
-#                     for predicted_sig in predicted_sigs:
-#                         # +1 because the first timestep prediction and truth are equal
-#                         all_info[key]['predictions']['profiles'][name_map[predicted_sig]]=f[shot][f'{predicted_sig}_{sim_name}'][start_index+1:end_index]
-#                         all_info[key]['truth']['profiles'][name_map[predicted_sig]]=f[shot][f'{experiment_names[predicted_sig]}_{sim_name}'][start_index:end_index]
-#                         if predicted_sig=='MU':
-#                             all_info[key]['predictions']['profiles'][name_map[predicted_sig]]=1./all_info[key]['predictions']['profiles'][name_map[predicted_sig]]
-#                             all_info[key]['truth']['profiles'][name_map[predicted_sig]]=1./all_info[key]['truth']['profiles'][name_map[predicted_sig]]
-#                         if predicted_sig=='UPAR':
-#                             upar_scaling=1./(1.e3*f[shot][f'rgeo_{sim_name}'][start_index:end_index][:,None])
-#                             # [:1] because the first timestep prediction and truth are equal
-#                             all_info[key]['predictions']['profiles'][name_map[predicted_sig]]=all_info[key]['predictions']['profiles'][name_map[predicted_sig]]*upar_scaling[1:]
-#                             all_info[key]['truth']['profiles'][name_map[predicted_sig]]=all_info[key]['truth']['profiles'][name_map[predicted_sig]]*upar_scaling
-#             if nshot%100==0:
-#                 now_time=time.time()
-#                 print(f'{nshot}/{len(shots)}: {now_time-prev_time:.0f}s')
-#                 prev_time=now_time
-#     all_info['nwarmup']=1
-#     return all_info
-
-# def get_ml_info(x_test, y_test,
-#                 profiles, parameters, calculations, actuators,
-#                 considered_models, nwarmup=0,
-#                 num_rollout_steps=400, fake_actuators=False,
-#                 bucket_size=10000):
-#     test_x_buckets = make_bucket(x_test, bucket_size)
-#     test_y_buckets = make_bucket(y_test, bucket_size)
-#     test_length_buckets = [[len(arr) for arr in bucket] for bucket in test_x_buckets]
-#     # used to help index stuff later
-#     running_num_samples=np.insert(np.cumsum([len(bucket) for bucket in test_x_buckets]),0,0)
-#     all_info={}
-#     all_keys=[]
-#     begin_time=time.time()
-#     prev_time=begin_time
-#     for sample_ind in range(len(x_test)):
-#         if fake_actuators:
-#             x_test[sample_ind]=prediction_helpers.get_fake_actuator_state(x_test[sample_ind], profiles, parameters, calculations, actuators)
-#         num_times=len(x_test[sample_ind])
-#         # right now we just exclude the last timestep even though we're going to calculate prediction for it
-#         # but the ground truth for it is in y_test (the targets) if we want it later
-#         true_times=np.arange(int(times[sample_ind]),
-#                              int(times[sample_ind]+num_times*dataSettings.DT*1e3),
-#                              dataSettings.DT*1e3)
-#         start_time=true_times[0]+nwarmup*dataSettings.DT*1e3
-#         end_time=true_times[-1]
-#         key=f'{shots[sample_ind]}_{int(start_time)}_{int(end_time)}'
-#         all_keys.append(key)
-#         all_info[key]={'truth': {'actuators': {}, 'profiles': {}, 'parameters': {}},
-#                        'predictions': {'profiles': {}, 'parameters': {}},
-#                        'normed_truth': {'actuators': {}, 'profiles': {}, 'parameters': {}},
-#                        'normed_predictions': {'profiles': {}, 'parameters': {}}}
-#         all_info[key]['truth']['times']=np.array(true_times)
-#         # remember this returns actuators at the present AND NEXT time, hence -1 index below
-#         input_dic=state_to_dic(x_test[sample_ind], profiles, parameters, calculations, actuators)
-#         denormed_dic=get_denormalized_dic(input_dic)
-#         for sig in actuators:
-#             all_info[key]['truth']['actuators'][sig]=denormed_dic[sig][:,-1]
-#             all_info[key]['normed_truth']['actuators'][sig]=input_dic[sig][:,-1]
-#         output_dic=state_to_dic(y_test[sample_ind], profiles, parameters)
-#         denormed_dic=get_denormalized_dic(output_dic)
-#         for sig in profiles:
-#             all_info[key]['truth']['profiles'][sig]=denormed_dic[sig]
-#             all_info[key]['normed_truth']['profiles'][sig]=output_dic[sig]
-#         for sig in parameters:
-#             all_info[key]['truth']['parameters'][sig]=denormed_dic[sig]
-#             all_info[key]['normed_truth']['parameters'][sig]=output_dic[sig]
-#         # predictions start after warmup, and each prediction will correspond to lookahead ahead
-#         # so we only predict up to the penultimate step
-#         lookahead=1
-#         all_info[key]['predictions']['times']=true_times[nwarmup:-lookahead]+lookahead*dataSettings.DT*1.e3
-#         ####
-#         # for sig in parameters:
-#         #     all_info[key]['predictions']['parameters'][sig]=np.zeros((len(considered_models),num_times-nwarmup-lookahead))
-#         #     all_info[key]['normed_predictions']['parameters'][sig]=np.zeros((len(considered_models),num_times-nwarmup-lookahead))
-#         # for sig in profiles:
-#         #     all_info[key]['predictions']['profiles'][sig]=np.zeros((len(considered_models),num_times-nwarmup-lookahead,dataSettings.nx))
-#         #     all_info[key]['normed_predictions']['profiles'][sig]=np.zeros((len(considered_models),num_times-nwarmup-lookahead,dataSettings.nx))
-#         # lose the ability to do ensemble of models all at once; if you want to do this just make info dics with separate models
-#         # this is more consistent with the idea of ensembling together ML and sim on equal footing
-#         for sig in parameters:
-#             all_info[key]['predictions']['parameters'][sig]=np.zeros((num_times-nwarmup-lookahead))
-#             all_info[key]['normed_predictions']['parameters'][sig]=np.zeros((num_times-nwarmup-lookahead))
-#         for sig in profiles:
-#             all_info[key]['predictions']['profiles'][sig]=np.zeros((num_times-nwarmup-lookahead,dataSettings.nx))
-#             all_info[key]['normed_predictions']['profiles'][sig]=np.zeros((num_times-nwarmup-lookahead,dataSettings.nx))
-
-#     print(f'Finished writing ground truth, took {time.time()-prev_time:0.0f}s')
-#     evaluation_begin_time=time.time()
-#     prev_time=evaluation_begin_time
-#     with torch.no_grad():
-#         for which_bucket in range(len(test_x_buckets)):
-#             x_bucket=test_x_buckets[which_bucket]
-#             y_bucket=test_y_buckets[which_bucket]
-#             length_bucket=test_length_buckets[which_bucket]
-#             padded_x=pad_sequence(x_bucket, batch_first=True)
-#             #padded_x=padded_x.to(device)
-#             #padded_y=padded_y.to(device)
-#             # only save simulations after warmup is over
-#             # see note above, taking out ability to ensemble models
-#             # since the ethos should be considering different ML and sim
-#             # models on equal footing
-#             for which_model in [0]: #range(len(considered_models)):
-#                 model=considered_models[which_model]
-#                 model_output=model(padded_x, reset_probability=float(1./num_rollout_steps), nwarmup=nwarmup, deterministic=True)
-#                 unpadded_output=unpad_sequence(model_output, length_bucket, batch_first=True)
-#                 for which_output,output in enumerate(unpadded_output):
-#                     # get the corresponding key
-#                     key=all_keys[running_num_samples[which_bucket]+which_output]
-#                     output_dic=state_to_dic(output, profiles, parameters)
-#                     denormed_dic=get_denormalized_dic(output_dic)
-#                     for sig in denormed_dic:
-#                         # see note above, taking out ability to ensemble models
-#                         # since the ethos should be considering different ML and sim
-#                         # models on equal footing
-#                         # if sig in profiles:
-#                         #     all_info[key]['predictions']['profiles'][sig][which_model]=denormed_dic[sig][nwarmup:-lookahead]
-#                         #     all_info[key]['normed_predictions']['profiles'][sig][which_model]=output_dic[sig][nwarmup:-lookahead]
-#                         # elif sig in parameters:
-#                         #     all_info[key]['predictions']['parameters'][sig][which_model]=denormed_dic[sig][nwarmup:-lookahead]
-#                         #     all_info[key]['predictions']['parameters'][sig][which_model]=output_dic[sig][nwarmup:-lookahead]
-#                         if sig in profiles:
-#                             all_info[key]['predictions']['profiles'][sig]=denormed_dic[sig][nwarmup:-lookahead]
-#                             all_info[key]['normed_predictions']['profiles'][sig]=output_dic[sig][nwarmup:-lookahead]
-#                         elif sig in parameters:
-#                             all_info[key]['predictions']['parameters'][sig]=denormed_dic[sig][nwarmup:-lookahead]
-#                             all_info[key]['predictions']['parameters'][sig]=output_dic[sig][nwarmup:-lookahead]
-#             print(f'Bucket {which_bucket+1}/{len(test_x_buckets)} took {time.time()-prev_time:0.0f}s')
-#             prev_time=time.time()
-#     print(f'Took {time.time()-begin_time:.2f} s')
-#     return all_info
-
 def get_ml_truth(y_test,
                  profiles, parameters,
                  recorded_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho'],
-                 prediction_length=20, nwarmup=0):
+                 prediction_length=20, nwarmup=0, use_fancy_normalization=False):
     num_samples=len(y_test)
     num_profiles=len(profiles)
     # just make this bigger than you think it needs to be
     y=np.ones((num_samples,num_profiles,MAX_NUMBER_OF_TIMES,dataSettings.nx))*np.nan
     for sample_ind in range(num_samples):
         output_dic=state_to_dic(y_test[sample_ind], profiles, parameters)
-        denormed_dic=get_denormalized_dic(output_dic)
+        denormed_dic=get_denormalized_dic(output_dic, use_fancy_normalization=use_fancy_normalization)
         for profile_ind,profile in enumerate(recorded_profiles):
             num_times=len(denormed_dic[profile][nwarmup:])
             y[sample_ind,profile_ind,:num_times]=denormed_dic[profile][nwarmup:]
@@ -232,14 +71,14 @@ def get_ml_profile_warmup_and_actuator_trajectory(x_test,
                                                   profiles, parameters, calculations, actuators,
                                                   recorded_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho'],
                                                   recorded_actuators=['pinj'],
-                                                  prediction_length=15, nwarmup=0):
+                                                  prediction_length=15, nwarmup=0, use_fancy_normalization=False):
     num_samples=len(x_test)
     profile_warmup=np.ones((num_samples,len(recorded_profiles),nwarmup+1,dataSettings.nx))*np.nan
     # make this bigger than you think is necessary
     actuator_trajectory=np.ones((num_samples,len(recorded_actuators),MAX_NUMBER_OF_TIMES))*np.nan
     for sample_ind in range(num_samples):
         output_dic=state_to_dic(x_test[sample_ind], profiles, parameters, calculations, actuators)
-        denormed_dic=get_denormalized_dic(output_dic)
+        denormed_dic=get_denormalized_dic(output_dic, use_fancy_normalization=use_fancy_normalization)
         for profile_ind,profile in enumerate(recorded_profiles):
             profile_warmup[sample_ind,profile_ind]=denormed_dic[profile][:nwarmup+1]
         for actuator_ind,actuator in enumerate(recorded_actuators):
@@ -253,6 +92,7 @@ def get_ml_predictions(x_test,
                        considered_models,
                        recorded_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho'],
                        prediction_length=15,nwarmup=0,
+                       use_fancy_normalization=False,
                        num_rollout_steps=400,
                        bucket_size=10000):
     test_x_buckets = make_bucket(x_test, bucket_size)
@@ -285,7 +125,7 @@ def get_ml_predictions(x_test,
             unpadded_output=unpad_sequence(model_output, length_bucket, batch_first=True)
             for which_output,output in enumerate(unpadded_output):
                 output_dic=state_to_dic(output, profiles, parameters)
-                denormed_dic=get_denormalized_dic(output_dic)
+                denormed_dic=get_denormalized_dic(output_dic, use_fancy_normalization=use_fancy_normalization)
                 for profile_ind,profile in enumerate(recorded_profiles):
                     num_times=len(denormed_dic[profile][nwarmup:])
                     yhat[sample_ind,profile_ind,:num_times]=denormed_dic[profile][nwarmup:]
@@ -344,41 +184,6 @@ def get_sim_predictions_shots_times(sim_name, sim_dir, prediction_length,
                 key_ind+=1
     print(f'Read in {len(sim_shots)} simulation rollouts')
     return yhat[:key_ind,:,:prediction_length], sim_shots, sim_times
-
-# info_dics is a list of sim_info and ml_info dics, the first in list is used for getting the truth
-# def info_dics_to_aggregate_block(info_dics, max_num_times=14, profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho', 'zipfit_trotfit_rho']):
-#     num_profiles=len(profiles)
-#     num_rho_points=dataSettings.nx
-#     model_names=list(info_dics.keys())
-#     num_models=len(model_names)
-#     # get shot_starttime_endtime keys common to all sets
-#     all_keys=list(set.intersection(*[set(info_dics[model_name].keys()) for model_name in model_names]))
-#     num_keys=len(all_keys)
-#     yhat=np.ones((num_models,num_keys,num_profiles,max_num_times,num_rho_points))*np.nan
-#     y=np.ones((num_keys,num_profiles,max_num_times,num_rho_points))*np.nan
-#     min_num_times_by_key=np.ones(num_keys)*max_num_times
-#     # turn data inside out for better data structure for stacked generalization aggregate model training
-#     for model_ind,model_name in enumerate(model_names):
-#         for key_ind,key in enumerate(all_keys):
-#             for profile_ind,profile in enumerate(profiles):
-#                 # robust way of ensuring we don't overrun arrays, go as long as possible but not more than max_num_times
-#                 this_num_times=min(max_num_times,len(info_dics[model_name][key]['predictions']['profiles'][profile]))
-#                 # keep track of the smallest number of keys among all models
-#                 min_num_times_by_key[key_ind]=min(min_num_times_by_key[key_ind],this_num_times)
-#                 yhat[model_ind,key_ind,profile_ind,:this_num_times]=info_dics[model_name][key]['predictions']['profiles'][profile][:this_num_times]
-#                 # use first model name as truth for now
-#                 if model_ind==0:
-#                     nwarmup=info_dics[model_name]['nwarmup']
-#                     this_num_times=min(max_num_times,len(info_dics[model_name][key]['truth']['profiles'][profile])-nwarmup)
-#                     # keep track of the smallest number of keys among all models
-#                     min_num_times_by_key[key_ind]=min(min_num_times_by_key[key_ind],this_num_times)
-#                     y[key_ind,profile_ind,:this_num_times]=info_dics[model_name][key]['truth']['profiles'][profile][nwarmup:this_num_times]
-#     return {'truth': y,
-#             'predictions': yhat,
-#             'models': model_names,
-#             'profiles': profiles,
-#             'keys': all_keys,
-#             'min_num_times_by_key': min_num_times_by_key}
 
 if __name__ == "__main__":
     nwarmup=5
@@ -452,13 +257,15 @@ if __name__ == "__main__":
             actuators=config['inputs']['actuators'].split()
             parameters=config['inputs'].get('parameters','').split()
             calculations=config['inputs'].get('calculations','').split()
+            use_fancy_normalization=config['preprocess'].getboolean('use_fancy_normalization',False)
             ensemble=False
             fake_actuators=False
             epoch=None
             num_rollout_steps=400
             min_sample_length=13 #num_rollout_steps+nwarmup
             x_test, y_test, ml_shots, times =customDatasetMakers.ian_dataset(data_cache_filename,profiles,parameters,calculations,actuators,sort_by_size=True,
-                                                                             min_sample_length=min_sample_length)
+                                                                             min_sample_length=min_sample_length,
+                                                                             use_fancy_normalization=use_fancy_normalization)
             ml_times=np.array(times)+nwarmup*dataSettings.DT*1.e3
             ml_times=ml_times.astype(int)
             start_times=ml_times
@@ -469,7 +276,7 @@ if __name__ == "__main__":
                                               considered_models,
                                               recorded_profiles=recorded_profiles,
                                               prediction_length=prediction_length,
-                                              nwarmup=nwarmup,
+                                              nwarmup=nwarmup, use_fancy_normalization=use_fancy_normalization,
                                               num_rollout_steps=num_rollout_steps)
             all_ml_info[ml_config]={'yhat': ml_predictions, 'shots': ml_shots, 'times': ml_times}
         # #### HOPEFULLY SECOND ML MODEL JUST RUNS
@@ -486,12 +293,12 @@ if __name__ == "__main__":
                            profiles, parameters,
                            recorded_profiles=recorded_profiles,
                            prediction_length=prediction_length,
-                           nwarmup=nwarmup)
+                           nwarmup=nwarmup, use_fancy_normalization=use_fancy_normalization)
         profile_warmup,actuator_trajectory=get_ml_profile_warmup_and_actuator_trajectory(x_test,
                                                                                          profiles, parameters, calculations, actuators,
                                                                                          recorded_profiles=recorded_profiles, recorded_actuators=recorded_actuators,
                                                                                          prediction_length=prediction_length,
-                                                                                         nwarmup=nwarmup)
+                                                                                         nwarmup=nwarmup, use_fancy_normalization=use_fancy_normalization)
         with open(ml_cache_filename,'wb') as f:
             pickle.dump({'all_ml_info': all_ml_info, 'truth': truth, 'profile_warmup': profile_warmup, 'actuator_trajectory': actuator_trajectory,
                          'ml_shots': ml_shots, 'ml_times': ml_times},f)
@@ -696,109 +503,3 @@ if __name__ == "__main__":
         axes[0].set_title(r'$\sigma$ error')
         axes[-1].set_xlabel(r'$\Delta$t (ms)')
         fig.savefig('testsigma.png')
-    # if True:
-    #     sim_info=get_sim_info(sim_name, sim_dir, min_length=5)
-    #     with open('sim_info.pkl','wb') as f:
-    #         pickle.dump(sim_info,f)
-    # if True:
-    #     shots=[]
-    #     time_bounds=[]
-    #     for key in sim_info:
-    #         shot,start_time,end_time=[int(elem) for elem in key.split('_')]
-    #         shots.append(shot)
-    #         # ML's first output is 20ms ahead of the start time
-    #         # similarly if we want the last prediction we have to get one extra
-    #         time_bounds.append([start_time-nwarmup*dataSettings.DT*1.e3,
-    #                             end_time+dataSettings.DT*1.e3])
-    # if True:
-    #     # get the processed ML data corresponding to the sim times
-    #     config=configparser.ConfigParser()
-    #     config.read(config_filename)
-    #     profiles=config['inputs']['profiles'].split()
-    #     actuators=config['inputs']['actuators'].split()
-    #     parameters=config['inputs'].get('parameters','').split()
-    #     calculations=config['inputs'].get('calculations','').split()
-    #     if os.path.exists(data_filename):
-    #         print(f'{data_filename} already written, delete to remake')
-    #     else:
-    #         raw_profiles=profiles+calculations
-    #         # in future should add zeff_rho to the raw dataset, for now
-    #         # it's calculated downstream during the second round of
-    #         # preprocessing for the model
-    #         if 'zeff_rho' in raw_profiles:
-    #             raw_profiles.remove('zeff_rho')
-    #             raw_profiles.append('zipfit_zdensfit_rho')
-    #         raw_scalars=actuators+parameters
-    #         customDatasetMakers.preprocess_data(data_filename,
-    #                                             raw_data_filename,raw_profiles,raw_scalars,
-    #                                             shots=shots, time_bounds=time_bounds,
-    #                                             exclude_ech=False,
-    #                                             zero_fill_signals=['ech_pwr_total','pinj','tinj'])
-    # # now get the models and dump the predictions
-    # if True:
-    #     config=configparser.ConfigParser()
-    #     config.read(config_filename)
-    #     profiles=config['inputs']['profiles'].split()
-    #     actuators=config['inputs']['actuators'].split()
-    #     parameters=config['inputs'].get('parameters','').split()
-    #     calculations=config['inputs'].get('calculations','').split()
-    #     ensemble=False
-    #     fake_actuators=False
-    #     epoch=None
-    #     num_rollout_steps=400
-    #     min_sample_length=13 #num_rollout_steps+nwarmup
-    #     x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True,
-    #                                                                   min_sample_length=min_sample_length)
-    #     considered_models = prediction_helpers.get_considered_models(config_filename, ensemble=ensemble, epoch=epoch)
-    #     ml_info=get_ml_info(x_test, y_test,
-    #                         profiles, parameters, calculations, actuators,
-    #                         considered_models, nwarmup,
-    #                         num_rollout_steps, fake_actuators)
-    #     with open('ml_info.pkl','wb') as f:
-    #         pickle.dump(ml_info,f)
-
-    # info_dics={'ml': ml_info, 'sim': sim_info}
-    # aggregate_info=info_dics_to_aggregate_block(info_dics)
-    # from aggregation import AggregatePredictor
-    # this_aggregate_predictor=AggregatePredictor()
-    # this_aggregate_predictor.train(aggregate_info)
-    # aggregate_prediction=this_aggregate_predictor.evaluate(aggregate_info['predictions'])
-    # info_dics[model_name][key]['predictions']['profiles'][profile]
-    # agg_info={}
-    # for key_ind,key in enumerate(aggregate_info['keys']):
-    #     agg_info[key]={'predictions': {'profiles': {}}}
-    #     for profile_ind,profile in enumerate(aggregate_info['profiles']):
-    #         agg_info[key]['predictions']['profiles'][profile]=aggregate_prediction[profile_ind]
-    #         first_prediction_time=start_time+dataSettings.DT*1.e3
-    #         last_time=start_time+dataSettings.DT*1.e3*len(aggregate_prediction[profile_ind])
-    #         agg_info[key]['predictions']['times']=np.arange(first_prediction_time,
-    #                                                         last_time,
-    #                                                         dataSettings.DT*1.e3)
-    # import pdb; pdb.set_trace()
-
-        # ip_400_600 ip_700_900 ip_1000_1200 ip_1300_10000
-        #which_dataset='nativeValSet'
-        #data_filename=config['preprocess']['preprocessed_data_filenamebase']+'val.pkl'
-        # which_dataset='ip_1000_1200test'
-        # data_filename=f'/projects/EKOLEMEN/profile_predictor/final_paper/{which_dataset}.pkl'
-
-        # x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True,
-        #                                                               min_sample_length=min_sample_length)
-
-        # considered_models = prediction_helpers.get_considered_models(config_filename, ensemble=ensemble, epoch=epoch)
-
-        # all_info=get_ml_info(x_test, y_test,
-        #                      profiles, parameters, calculations, actuators,
-        #                      considered_models, nwarmup,
-        #                      num_rollout_steps, fake_actuators)
-
-        # appendage=''
-        # if fake_actuators:
-        #     appendage+='_FAKE'
-        # if epoch is not None:
-        #     appendage+=f'_epoch{epoch}'
-        # appendage+=f'_{num_rollout_steps}steps'
-        # pickle_filename=f"/scratch/gpfs/jabbate/paper_results/rollout_{output_filename_base}{appendage}_{which_dataset}.pkl"
-        # print(f"dumping to {pickle_filename}")
-        # with open(pickle_filename,'wb') as f:
-        #     pickle.dump(all_info,f)

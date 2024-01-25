@@ -22,6 +22,7 @@ else:
 config=configparser.ConfigParser()
 config.read(config_filename)
 preprocessed_data_filenamebase=config['preprocess']['preprocessed_data_filenamebase']
+use_fancy_normalization=config['preprocess'].getboolean('use_fancy_normalization',False)
 model_type=config['model'].get('model_type','IanRNN')
 bucket_size=config['optimization'].getint('bucket_size')
 nwarmup=config['optimization'].getint('nwarmup',0)
@@ -94,14 +95,16 @@ print(f'Organizing train data from {train_filename}')
 start_time=time.time()
 x_train, y_train, shots, times = ian_dataset(train_filename,
                                              profiles,parameters,calculations,actuators,
-                                             sort_by_size=True, min_sample_length=min_sample_length)
+                                             sort_by_size=True, min_sample_length=min_sample_length,
+                                             use_fancy_normalization=use_fancy_normalization)
 print(f'...took {(time.time()-start_time):0.2f}s')
 val_filename=preprocessed_data_filenamebase+'val.pkl'
 print(f'Organizing validation data from {val_filename}')
 start_time=time.time()
 x_val, y_val, shots, times = ian_dataset(val_filename,
                                          profiles,parameters,calculations,actuators,
-                                         sort_by_size=True, min_sample_length=min_sample_length)
+                                         sort_by_size=True, min_sample_length=min_sample_length,
+                                         use_fancy_normalization=use_fancy_normalization)
 print(f'...took {(time.time()-start_time):0.2f}s')
 
 # I divide out by myself since different sequences/batches have different sizes
