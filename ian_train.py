@@ -10,6 +10,7 @@ from dataSettings import nx
 import configparser
 import os
 import sys
+import shutil
 import time
 
 models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLinear': HiroLinear}
@@ -226,22 +227,23 @@ for epoch in range(start_epoch, n_epochs):
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
-    # the task gets harder for curriculum learning until autoregression_end_epoch, making it hard to compare
-    # loss from different epochs
-    # if we're doing autoregression, then until the end epoch just save every step
-    if autoregression_num_steps<=1:
+    # the task gets harder for curriculum learning during the ramp
+    # before the ramp, consider only the best model so far
+    if autoregression_num_steps<=1 or epoch<autoregression_start_epoch:
         relevant_val_losses=avg_val_losses
     else:
-        relevant_val_losses=avg_val_losses[autoregression_end_epoch:]+[avg_val_losses[-1]]
+        # if during the ramp always save
+        if epoch<=autoregression_end_epoch:
+            relevant_val_losses=[avg_val_losses[-1]]
+        # after ramp consider only losses after ramp
+        else:
+            relevant_val_losses=avg_val_losses[autoregression_end_epoch:]
     best_epoch= ( avg_val_losses[-1]==min(relevant_val_losses) )
-    # if we don't yet have a .tar file, e.g. if we're resuming training into a new filename,
-    # automatically save the first step
+    # in weird case we don't yet have a .tar file, e.g. if we're resuming training into a new filename,
+    # be sure to save the first step
     if not os.path.exists(output_filename):
         best_epoch=True
-    if (not early_saving) or best_epoch or (epoch in save_epochs):
-        this_output_filename=output_filename
-        if epoch in save_epochs:
-            this_output_filename=epoch_output_filename(epoch)
+    if (not early_saving) or best_epoch:
         print(f"Checkpoint")
         torch.save({
             'epoch': epoch,
@@ -255,8 +257,10 @@ for epoch in range(start_epoch, n_epochs):
             'calculations': calculations,
             'actuators': actuators,
             'model_hyperparams': model_hyperparams,
-            'exclude_ech': True
-        }, this_output_filename)
+        }, output_filename)
+    if epoch in save_epochs:
+        epoch_output_filename=epoch_output_filename(epoch)
+        shutil.copyfile(output_filename, epoch_output_filename)
     prev_time=time.time()
 
 print(f'...took {(time.time()-start_time)/60:0.2f}min')
