@@ -46,7 +46,7 @@ def launch_ensemble(baseconfig_filename='model.cfg',submit_runs=False,n_models=1
 #SBATCH -t 5-00:00:00
 
 root_dir={root_dir}
-module load anaconda
+module load anaconda3/2022.5
 conda activate torch
 cd $root_dir
 python -u ian_train.py {config_filename}
