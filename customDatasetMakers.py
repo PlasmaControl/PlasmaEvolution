@@ -215,6 +215,21 @@ def preprocess_data(processed_data_filename,
     else:
         return processed_data
 
+def add_zeff_to_processed_data(processed_data):
+    # must be <1/Z_c=1/6, >>~ 2% (good estimate for f_C at DIII-D)
+    impurity_fraction_maximum=0.1
+    Zc=6
+    Zmain=1
+    ne=processed_data['zipfit_edensfit_rho'][()]
+    nc=processed_data['zipfit_zdensfit_rho'][()]
+    # make sure impurity density (poorly measured by CXR, especially at edge)
+    # leaves at least a little room for impurity ions when considering
+    # quasineutrality.
+    nc=np.minimum(nc, impurity_fraction_maximum * ne)
+    nmain=(ne - Zc * nc) / Zmain
+    # note it adds it as a side effect
+    processed_data['zeff_rho']=(nmain * Zmain**2 + nc * Zc**2) / ne
+
 def ian_dataset(processed_data_filename,
                 profiles,parameters=[],calculations=[],actuators=[],
                 min_sample_length=6,
@@ -227,18 +242,7 @@ def ian_dataset(processed_data_filename,
     if 'P_AUXILIARY' in actuators:
         processed_data['P_AUXILIARY']=processed_data['pinj']+1e-3*processed_data['ech_pwr_total']
     if ('zeff_rho' in profiles) and ('zeff_rho' not in processed_data):
-        # must be <1/Z_c=1/6, >>~ 2% (good estimate for f_C at DIII-D)
-        impurity_fraction_maximum=0.1
-        Zc=6
-        Zmain=1
-        ne=processed_data['zipfit_edensfit_rho'][()]
-        nc=processed_data['zipfit_zdensfit_rho'][()]
-        # make sure impurity density (poorly measured by CXR, especially at edge)
-        # leaves at least a little room for impurity ions when considering
-        # quasineutrality.
-        nc=np.minimum(nc, impurity_fraction_maximum * ne)
-        nmain=(ne - Zc * nc) / Zmain
-        processed_data['zeff_rho']=(nmain * Zmain**2 + nc * Zc**2) / ne
+        add_zeff_to_processed_data(processed_data)
     # normalize
     processed_data=dataSettings.get_normalized_dic(processed_data,
                                                    use_fancy_normalization=use_fancy_normalization)
