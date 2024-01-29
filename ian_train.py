@@ -237,7 +237,8 @@ for epoch in range(start_epoch, n_epochs):
             relevant_val_losses=[avg_val_losses[-1]]
         # after ramp consider only losses after ramp
         else:
-            relevant_val_losses=avg_val_losses[autoregression_end_epoch:]
+            # and if we're e.g. tuning a model on a different task only consider new loss regime
+            relevant_val_losses=avg_val_losses[max(start_epoch,autoregression_end_epoch):]
     best_epoch= ( avg_val_losses[-1]==min(relevant_val_losses) )
     # in weird case we don't yet have a .tar file, e.g. if we're resuming training into a new filename,
     # be sure to save the first step
