@@ -259,7 +259,6 @@ for epoch in range(start_epoch, n_epochs):
             'model_hyperparams': model_hyperparams,
         }, output_filename)
     if epoch in save_epochs:
-        epoch_output_filename=epoch_output_filename(epoch)
         shutil.copyfile(output_filename, epoch_output_filename)
     prev_time=time.time()
 
