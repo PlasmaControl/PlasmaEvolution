@@ -82,7 +82,7 @@ if tune_model:
     saved_state=torch.load(untuned_output_filename)
     model.load_state_dict(saved_state['model_state_dict'])
     if resume_training:
-        start_epoch=saved_state['epoch']+1
+        start_epoch=saved_state['epoch']
     print(f'Starting from model state stored in {untuned_output_filename}, from epoch {start_epoch}; saving new model to {output_filename}')
     for name, child in model.named_children():
         if name in frozen_layers:
@@ -260,7 +260,7 @@ for epoch in range(start_epoch, n_epochs):
             'model_hyperparams': model_hyperparams,
         }, output_filename)
     if epoch in save_epochs:
-        shutil.copyfile(output_filename, epoch_output_filename)
+        shutil.copyfile(output_filename, epoch_output_filename(epoch))
     prev_time=time.time()
 
 print(f'...took {(time.time()-start_time)/60:0.2f}min')
