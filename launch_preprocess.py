@@ -50,14 +50,12 @@ if __name__=='__main__':
         # dealing with training set
         preprocessed_filename_dic={'all': {'ip_minimum': 0.0e6, 'ip_maximum': 10.0e6},
                                    'ip_0_900': {'ip_minimum': 0.0e6, 'ip_maximum': 0.9e6},
-                                   'ip_1000_1200': {'ip_minimum': 1.0e6, 'ip_maximum': 1.2e6},
-                                   'ip_0_1200': {'ip_minimum': 0.0e6, 'ip_maximum': 1.2e6},
-                                   'ip_1300_10000': {'ip_minimum': 1.3e6, 'ip_maximum': 10e6}}
+                                   'ip_0_1200': {'ip_minimum': 0.0e6, 'ip_maximum': 1.2e6}}
         # dealing with inputs
         for which_trainset in preprocessed_filename_dic:
             hyperparam_adjustments.append(
                 {
-                    'logistics': {'output_filename_base': f'aug{which_trainset}'},
+                    'logistics': {'output_filename_base': f'astraInterpretiveAndTGLFNN{which_trainset}'},
                     'settings': preprocessed_filename_dic[which_trainset]
                 }
             )

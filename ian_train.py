@@ -55,7 +55,7 @@ if config.has_section('tuning'):
     frozen_layers=config['tuning'].get('frozen_layers','').split()
     resume_training=config['tuning'].getboolean('resume_training',False)
     masked_outputs=config['tuning'].get('masked_outputs','').split()
-    rho_bdry_index=config['tuning'].get('rho_bdry_index',None)
+    rho_bdry_index=config['tuning'].getint('rho_bdry_index',None)
 else:
     tune_model=False
     masked_outputs=[]
@@ -154,10 +154,10 @@ else:
     avg_train_losses=[]
     avg_val_losses=[]
 for epoch in range(start_epoch, n_epochs):
-    if autoregression_num_steps<=1 or epoch<=autoregression_start_epoch:
+    if autoregression_num_steps<=1 or epoch<autoregression_start_epoch:
         reset_probability=1
     else:
-        if epoch>autoregression_end_epoch:
+        if epoch>=autoregression_end_epoch:
             avg_steps=autoregression_num_steps
         else:
             y2=float(autoregression_num_steps)
@@ -229,7 +229,7 @@ for epoch in range(start_epoch, n_epochs):
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
     # the task gets harder for curriculum learning during the ramp
     # before the ramp, consider only the best model so far
-    if autoregression_num_steps<=1 or epoch<autoregression_start_epoch:
+    if autoregression_num_steps<=1 or epoch<=autoregression_start_epoch:
         relevant_val_losses=avg_val_losses
     else:
         # if during the ramp always save

@@ -73,7 +73,7 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
             axes[i,2].plot(x, denormalized_true_dic[profile][time_ind+nwarmup],
                            linestyle='--', c=colors[step_ind])
     for i,actuator in enumerate(plotted_actuators):
-        axes[i,0].plot(true_times, denormalized_true_dic[actuator]
+        axes[i,0].plot(true_times, denormalized_true_dic[actuator],
                        label='real', c='k', linestyle='--')
         axes[i,0].set_ylabel(label_map[actuator])
     if len(plotted_parameters)>0:

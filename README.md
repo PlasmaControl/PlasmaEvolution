@@ -20,3 +20,15 @@ And of course reload anaconda and activate this environment every time you go to
 
 -------- TO HELP TEST ---------
 Set train_shots, val_shots, and test_shots to a small number of shots each
+
+-------- TO TUNE MODELS -------
+Training takes a long time with curriculum learning.
+If you have a good model with the right inputs and want to tune it on simulation or other-machine data, or overfit it to data (e.g. for developing control for a specific scenario), copy the config file from the model you like, then
+1) set tune_model to true
+2) set the model_to_tune_filename_base to the output_filename_base (i.e. you're tuning the good model)
+3) set the output_filename_base to your new model name
+If you only want to tune certain layers add the layer names as a list. In torch layer names correspond to named class variables (self.rnn --> rnn, self.encoder --> encoder, self.decoder --> decoder) and can be found with
+for name, child in model.named_children():
+    print(name)
+4) for most cases set autoregression_start_epoch and autoregression_end_epoch to 0 since you don't want to go back to the beginning of the curriculum learning, you want to start from what you already have
+5) for some cases (e.g. for training on simulations where you only confidently can predict out to rho=0.8 and you only predict a subset of the profiles like TE and TI) add a list of the profiles you don't want to consider to masked_outputs and set tuning-->rho_bdry_index to the index of the boundary (e.g. rho=0.8 for nx=33 would be 0.8*33 ~ 26). This will mask those outputs during training.

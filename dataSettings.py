@@ -55,6 +55,7 @@ clipped_signals={}
 
 # add ASTRA stuff, for all possible ASTRA runs
 sig_normalizations={
+    'CD': {'mean': 0, 'std': 1},
     'CC': {'mean': 0, 'std': 50},
     'CUBS': {'mean': 0, 'std': 1},
     'HE': {'mean': 0, 'std': 1},
@@ -74,7 +75,8 @@ sig_bounds={
     'HE': {'min': 0, 'max': 20},
     'XI': {'min': 0, 'max': 20}
 }
-for astrasim in ['astrainterpretive','astrapredictEPEDNNTGLFNNfullyZIPFIT']:
+for astrasim in ['astrainterpretive','astrapredictEPEDNNTGLFNNfullyZIPFIT',
+                 'astrainterpretZIPFIT', 'astrapredictTGLFNNZIPFIT']:
     for sig in sig_normalizations:
         normalizations[f'{sig}_{astrasim}']=sig_normalizations[sig]
     for sig in sig_bounds:
