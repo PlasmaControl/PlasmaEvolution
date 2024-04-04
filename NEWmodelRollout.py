@@ -11,13 +11,25 @@ import prediction_helpers
 import pickle
 from train_helpers import make_bucket
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
-from dataSettings import get_denormalized_dic
+from dataSettings import get_denormalized_dic,normalizations
 from customDatasetMakers import state_to_dic
 # for fake actuators
 from customDatasetMakers import get_state_indices_dic
 
 import matplotlib.pyplot as plt
 import matplotlib
+
+SMALL_SIZE = 25
+MEDIUM_SIZE = 30
+BIGGER_SIZE = 30
+plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+plt.rc('lines',linewidth=4)
 
 import time
 
@@ -276,7 +288,7 @@ if __name__ == "__main__":
                     'ip_0_1200NOdssdenest_RESUMED3config': r'ML ($I_p$<1.2MA)', #'untuned',
                     'surrogateHybrid_tuned_on_data_only_ip_0_900unfrozenconfig': 'data\n(all)', 'surrogateHybridip_0_900unfrozenconfig': 'transfer\n(all)',
                     'surrogateHybrid_tuned_on_data_only_ip_0_900frozenEncodersconfig': 'data\n(RNN)', 'surrogateHybridip_0_900frozenEncodersconfig': 'transfer\n(RNN)', 
-                    'surrogateHybrid_tuned_on_data_only_ip_0_900frozenRNNconfig': 'data\n(Encoders)', 'surrogateHybridip_0_900frozenRNNconfig': 'transfer\n(Encoders)',
+                    'surrogateHybrid_tuned_on_data_only_ip_0_900frozenRNNconfig': 'data\n(Enc/Dec)', 'surrogateHybridip_0_900frozenRNNconfig': 'transfer\n(Enc/Dec)',
                     # curriculum stuff
                     'alldiiid_ensembleconfig0EPOCH250': r'$\mu$=20ms prediction','alldiiid_ensembleconfig0EPOCH500': r'Epoch 500: $\mu$=100ms prediction',
                     'alldiiid_ensembleconfig0EPOCH750': r'Epoch 750: $\mu$=200ms prediction','alldiiid_ensembleconfig0': r'$\mu$=200ms prediction',
@@ -300,38 +312,51 @@ if __name__ == "__main__":
     sigma_bar_title=r'$\sigma$ error on $1.0MA<I_p<1.2MA$'
     # comparing d3d to aug to gyrobohm normalized
     if False:
+        plotted_profiles=['zipfit_itempfit_rho','zipfit_trotfit_rho','zipfit_edensfit_rho'] #'zipfit_etempfit_rho',
+        sigma_bar_title='Error (%)'
         plot_sigma_bar=True
         considered_sims=[]
         #'augip_0_1200NOdssdenestconfig', 'aug900_d3d900NOdssdenestconfig',
-        ml_configs=['ip_0_1200NOdssdenest_RESUMED3config','ip_0_900NOdssdenest_RESUMED3config',
-                    'augall_d3d900NOdssdenestUNNORMEDconfig',
-                    'augall_d3d900NOdssdenestNORMEDconfig',
-                    'augallNOdssdenestnoGBnormalizationconfig',
-                    'augallNOdssdenestwithGBnormalizationconfig']
-        model_name_map.update({'ip_0_900NOdssdenest_RESUMED3config': r'$I_p$<0.9MA',
+        ml_configs=[#'ip_0_1200NOdssdenest_RESUMED3config',
+            'ip_0_900NOdssdenest_RESUMED3config',
+            'augall_d3d900NOdssdenestUNNORMEDconfig',
+            'augall_d3d900NOdssdenestNORMEDconfig']
+                    #'augallNOdssdenestnoGBnormalizationconfig',
+                    #'augallNOdssdenestwithGBnormalizationconfig']
+        model_name_map.update({'ip_0_900NOdssdenest_RESUMED3config': 'D3D',#r'$I_p$<0.9MA',
+                               #'augall_d3d900NOdssdenestconfig': r'D3D+AUG',
+                               'augall_d3d900NOdssdenestNORMEDconfig': 'Normed\nD3D+AUG',
+                               'augall_d3d900NOdssdenestUNNORMEDconfig': r'D3D+AUG', #r'$I_p$<0.9MA'+'\n+AUG',
+                               'augallNOdssdenestwithGBnormalizationconfig': 'AUG normed',
+                               'augallNOdssdenestnoGBnormalizationconfig': 'AUG',
                                'ip_0_1200NOdssdenest_RESUMED3config': r'$I_p$<1.2MA'})
         ml_cache_filename='/scratch/gpfs/jabbate/ml_aug_comparison.pkl'
         data_cache_filename='/scratch/gpfs/jabbate/data_1000_1200.pkl'
     # surrogate hybrid (tuning on simulation outputs)
     elif False:
+        sigma_bar_title='Error (%)'
         plot_sigma_bar=True
-        model_name_map.update({'ip_0_900NOdssdenest_RESUMED3config': r'$I_p$<0.9MA',
+        model_name_map.update({'ip_0_900NOdssdenest_RESUMED3config': 'ML', #r'$I_p$<0.9MA',
                                'ip_0_1200NOdssdenest_RESUMED3config': r'$I_p$<1.2MA'})
         plotted_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho']
         considered_sims=[]
         #'augip_0_1200NOdssdenestconfig', 'aug900_d3d900NOdssdenestconfig',
         ml_configs=['ip_0_900NOdssdenest_RESUMED3config',
-                    'surrogateHybrid_tuned_on_data_only_ip_0_900frozenEncodersconfig', 'surrogateHybridip_0_900frozenEncodersconfig',
-                    'surrogateHybrid_tuned_on_data_only_ip_0_900frozenRNNconfig', 'surrogateHybridip_0_900frozenRNNconfig',
-                    'surrogateHybrid_tuned_on_data_only_ip_0_900unfrozenconfig', 'surrogateHybridip_0_900unfrozenconfig']
+                    #'surrogateHybrid_tuned_on_data_only_ip_0_900frozenEncodersconfig',
+                    'surrogateHybridip_0_900frozenEncodersconfig',
+                    #'surrogateHybrid_tuned_on_data_only_ip_0_900frozenRNNconfig',
+                    'surrogateHybridip_0_900frozenRNNconfig',
+                    #'surrogateHybrid_tuned_on_data_only_ip_0_900unfrozenconfig',
+                    'surrogateHybridip_0_900unfrozenconfig']
         ml_cache_filename='/scratch/gpfs/jabbate/ml_surrogate_hybrid.pkl'
         data_cache_filename='/scratch/gpfs/jabbate/data_1000_1200.pkl'
     # comparing sims for 1.0 to 1.2, extracting file to train coefficients on
     elif False:
+        plot_sigma_bar=True
         plotted_profiles=recorded_profiles[:3]
         plotted_actuators=recorded_actuators[:1]
         #considered_sims=[]
-        considered_sims=['astrapredictTGLFNNZIPFIT',#'astrapredictTGLFNNEPEDNNZIPFIT',
+        considered_sims=['astrapredictTGLFNNZIPFIT', #'astrapredictTGLFNNEPEDNNZIPFIT',
                          'astrapredictFIXEDGBZIPFIT','astrapredictFIXEDTGLFNNZIPFIT']
                          #'astrapredictTGLFNNandScaleDensityZIPFIT']
                          #'astrapredictFULLYZIPFIT',
@@ -353,7 +378,8 @@ if __name__ == "__main__":
             model_colors['ensemble\n(optimized)']='m'
     # comparing for 1.3 and up, using trained coefficients
     elif False:
-        sigma_bar_title=r'$\sigma$ error on $1.3MA<I_p$'
+        model_name_map.update({'ip_0_1200NOdssdenest_RESUMED3config': 'ML'})
+        sigma_bar_title='Error (%)' #r'$\sigma$ error on $1.3MA<I_p$'
         plotted_profiles=recorded_profiles[:3]
         plotted_actuators=recorded_actuators[:1]
         #considered_sims=[]
@@ -389,8 +415,9 @@ if __name__ == "__main__":
         model_colors['ensemble\n(average)']='tab:pink'
         model_colors['ensemble\n(optimized)']='m'
     # seeing whether adding ASTRA calculations helps
-    elif True:
-        sigma_bar_title=r'$\sigma$ error on all data'
+    elif False:
+        plotted_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','qpsi_EFIT01']
+        sigma_bar_title='Error (%)' #r'$\sigma$ error on all data'
         plot_sigma_bar=True
         legend_fontsize=10
         ml_configs=['astraInterpretiveAndTGLFNNallnoCalcsconfig','astraInterpretiveAndTGLFNNallwithPredictiveconfig',
@@ -422,13 +449,14 @@ if __name__ == "__main__":
         prediction_length=25
         plotted_actuators=recorded_actuators[:1]
     # ensemble stuff for explaining curriculum learning
-    elif False:
+    elif True:
+        #plotted_profiles=recorded_profiles
+        plotted_profiles=['zipfit_etempfit_rho']
         plot_sigma_bar=False
         plot_sigma_time=True
         plot_over_rho=False
         plot_over_time=False
         considered_sims=[]
-        plotted_profiles=recorded_profiles
         # JANK: pop a "EPOCH***" on the end to use a specific epoch of a config file
         ml_configs=['alldiiid_ensembleconfig0EPOCH250',#'alldiiid_ensembleconfig0EPOCH500',
                     #'alldiiid_ensembleconfig0EPOCH750',
@@ -472,10 +500,10 @@ if __name__ == "__main__":
                 ntimestep_delay=0
                 use_delta=False
             sim_yhat, sim_shots, sim_times, sim_y=get_sim_predictions_shots_times(sim_name, sim_dir, prediction_length=prediction_length,
-                                                                           recorded_profiles=recorded_profiles,
-                                                                           ntimestep_delay=ntimestep_delay,
-                                                                           min_length=15,
-                                                                           use_delta=use_delta)
+                                                                                  recorded_profiles=recorded_profiles,
+                                                                                  ntimestep_delay=ntimestep_delay,
+                                                                                  min_length=15,
+                                                                                  use_delta=use_delta)
             sim_info={'shots': sim_shots, 'times': sim_times, 'data': sim_yhat}
             sim_truth_info={'shots': sim_shots, 'times': sim_times, 'data': sim_y}
             all_sim_info[sim_name]=sim_info
@@ -668,6 +696,12 @@ if __name__ == "__main__":
                     else:
                         all_sigmas[sample_ind,model_ind,profile_ind,time_ind]=sigma(model_predictions[model_ind,sample_ind,profile_ind,time_ind],
                                                                                     all_info['truth']['data'][sample_ind,profile_ind,time_ind])
+    all_sigmas_by_shot=[]
+    for shot in np.unique(shots):
+        inds=np.where(np.array(shots)==shot)
+        if len(inds)>0:
+            all_sigmas_by_shot.append(np.nanmean(all_sigmas[inds],axis=0))
+    all_sigmas_by_shot=np.array(all_sigmas_by_shot)
     font = {'weight' : 'bold',
             'size'   : 16}
     matplotlib.rc('font', **font)
@@ -696,13 +730,13 @@ if __name__ == "__main__":
         fig,axes=plt.subplots(len(plotted_profiles),sharex=True,sharey=False,figsize=(10,15))
         axes=np.atleast_1d(axes)
         bar_model_names=[model_name for model_name in model_names if model_name!='const']
-        bar_model_colors=[model_colors[model_name] for model_name in bar_model_names]
+        #bar_model_colors=[model_colors[model_name] for model_name in bar_model_names]
         bar_model_labels=[model_name_map.get(model_name,model_name) for model_name in bar_model_names]
         constant_color='b'
         changing_color='r'
-        for profile in plotted_profiles:
+        for ax_ind,profile in enumerate(plotted_profiles):
             profile_ind=recorded_profiles.index(profile)
-            ax=axes[profile_ind]
+            ax=axes[ax_ind]
             #mean_sigmas,changing_mean_sigmas,std_sigmas,changing_std_sigmas=[],[],[],[]
             sigma_percentiles,changing_sigma_percentiles=[],[]
             mean_sigmas,changing_mean_sigmas=[],[]
@@ -723,34 +757,49 @@ if __name__ == "__main__":
             changing_sigma_values=changing_sigma_percentiles[1] #changing_mean_sigmas
             rects=ax.bar(ind,sigma_values,width,color=constant_color,alpha=0.8,yerr=(sigma_values-sigma_percentiles[0],
                                                                                      sigma_percentiles[2]-sigma_values))
-            changing_rects=ax.bar(ind+width,changing_sigma_values,width,alpha=0.8,color=changing_color,yerr=(changing_sigma_values-changing_sigma_percentiles[0],
-                                                                                                            changing_sigma_percentiles[2]-changing_sigma_values))
-            #rects=ax.bar(ind,mean_sigmas,width,color='b',yerr=std_sigmas)
-            #changing_rects=ax.bar(ind+width,changing_mean_sigmas,width,color='r',yerr=changing_std_sigmas)
             ax.set_xticks(ind+width/2)
             ax.set_xticklabels(bar_model_labels,rotation=45)
-            #ax.bar(bar_model_labels,changing_mean_sigmas,alpha=0.3,color=bar_model_colors,edgecolor='k')
-            #ax.bar(bar_model_labels,mean_sigmas,alpha=0.5,color=bar_model_colors,edgecolor='k')
             const_ind=model_names.index('const')
-            ax.axhline(np.nanmean(all_sigmas[:,const_ind,profile_ind]),c=constant_color,linestyle='--') #,label='constant on constant')
-            ax.axhline(np.nanmean(all_sigmas[changing_sample_inds,const_ind,profile_ind]),c=changing_color,linestyle='--') #,label='constant on changing')
+            #ax.axhline(np.nanmean(all_sigmas[:,const_ind,profile_ind]),c=constant_color,linestyle='--',linewidth=3) #,label='constant on constant')
+            # ax.axhspan(np.nanpercentile(all_sigmas[:,const_ind,profile_ind],percentiles[0]),
+            #           np.nanpercentile(all_sigmas[:,const_ind,profile_ind],percentiles[2]),
+            #           color=constant_color, alpha=0.2,zorder=-100)
+            #changing_rects=ax.bar(ind+width,changing_sigma_values,width,alpha=0.8,color=changing_color,yerr=(changing_sigma_values-changing_sigma_percentiles[0],
+            #                                                                                                changing_sigma_percentiles[2]-changing_sigma_values))
+            #ax.axhline(np.nanmean(all_sigmas[changing_sample_inds,const_ind,profile_ind]),c=changing_color,linestyle='--',linewidth=3) #,
+            # ax.axhspan(np.nanpercentile(all_sigmas[changing_sample_inds,const_ind,profile_ind],percentiles[0]),
+            #           np.nanpercentile(all_sigmas[changing_sample_inds,const_ind,profile_ind],percentiles[2]),
+            #           color=changing_color, alpha=0.2, zorder=-100)
             ax.set_ylabel(sig_name_map.get(profile,profile))
             #ax.set_xticklabels(bar_model_labels, rotation=45)
-        axes[0].legend((rects[0],changing_rects[0]),
-                       ('All trajectories', r'Changing trajectories ($\Delta P_{inj}$>500kW)'),
-                       fontsize=legend_fontsize)
+        # axes[0].legend((rects[0],changing_rects[0]),
+        #               ('All trajectories', r'Changing trajectories ($\Delta P_{inj}$>500kW)'),
+        #               fontsize=legend_fontsize)
         axes[0].set_title(sigma_bar_title)
         #axes[0].set_ylim(0,30)
         fig.savefig('testbar.png')
+        for profile in plotted_profiles:
+            profile_ind=recorded_profiles.index(profile)
+            baseline_model_ind=1
+            baseline_sigma=np.nanmean(all_sigmas_by_shot[:,baseline_model_ind,profile_ind])
+            print(profile)
+            for model_name in bar_model_names:
+                model_ind=model_names.index(model_name)
+                if not np.isnan(nan_or_one[model_name][profile]):
+                    pval=stats.ttest_rel(np.nanmean(all_sigmas_by_shot[:,baseline_model_ind,profile_ind,:],axis=-1),
+                                         np.nanmean(all_sigmas_by_shot[:,model_ind,profile_ind,:],axis=-1),
+                                         alternative='greater').pvalue
+                    print(f'H: {model_names[baseline_model_ind]}>{model_names[model_ind]}: pvalue={pval}')
     if plot_sigma_time:
-        legend_fontsize=10
-        fig,axes=plt.subplots(len(recorded_profiles),sharex=True,figsize=(10,15))
+        legend_fontsize=20
+        fig,axes=plt.subplots(len(plotted_profiles),sharex=True,figsize=(15,10))
         axes=np.atleast_1d(axes)
         dtime=np.arange(1,prediction_length+1)*dataSettings.DT*1.e3
         #time_ind=8
         #my_time=dtime[time_ind]
-        for profile_ind,profile in enumerate(recorded_profiles):
-            ax=axes[profile_ind]
+        for ax_ind,profile in enumerate(plotted_profiles):
+            profile_ind=recorded_profiles.index(profile)
+            ax=axes[ax_ind]
             for model_ind,model_name in enumerate(model_names):
                 # for the plots showing curriculum learning changing num steps over time
                 if model_name=='alldiiid_ensembleconfig0EPOCH250':
@@ -773,16 +822,19 @@ if __name__ == "__main__":
         axes[0].legend(fontsize=legend_fontsize,loc='upper left')
         #axes[0].set_title(rf'$\sigma$ error at $\Delta$t={my_time} ms')
         #axes[-1].set_xlabel(r'$\sigma$')
-        axes[0].set_title(r'$\sigma$ error')
-        axes[-1].set_xlabel(r'$\Delta t$')
+        axes[0].set_title(r'Error (%)')
+        axes[-1].set_xlabel(r'$\Delta t$ (ms)')
         fig.savefig('testsigmatime.png')
     # for plots
+    #import pdb; pdb.set_trace()
     sample_ind=np.random.choice(changing_sample_inds) #num_samples)
+    sample_ind=1479 #meta-learning / ensemble plot
+    #sample_ind=486 #20 / 200ms curriculum plot
     shot=shots[sample_ind]
     this_time=int(times[sample_ind])
     if plot_over_rho:
         rho=np.linspace(0,1,dataSettings.nx)
-        fig,axes=plt.subplots(len(plotted_profiles),sharex=True,figsize=(10,15))
+        fig,axes=plt.subplots(1,len(plotted_profiles),sharex=True,figsize=(15,5))
         axes=np.atleast_1d(axes)
         ax_ind=0
         min_prediction_step=min_prediction_steps[sample_ind]-5
@@ -800,9 +852,10 @@ if __name__ == "__main__":
             #ax.plot(rho,all_info['profile_warmup']['data'][sample_ind,profile_ind,-1,:],c='k',linestyle='--',label='initial')
             ax.set_ylabel(sig_name_map.get(profile,profile))
             #ax.plot(predicted_times,sim_yhat[sample_ind,profile_ind,:,0],c='b')
+            axes[ax_ind].set_xlabel(r'$\rho$')
             ax_ind+=1
         axes[0].legend(fontsize=legend_fontsize)
-        axes[0].set_title(f'Shot {shot} {this_time}-{end_time}ms')
+        fig.suptitle(f'Shot {shot} {this_time}-{end_time}ms')
         axes[-1].set_xlabel(r'$\rho$')
         axes[-1].set_xlim(0,1)
         fig.savefig('testrho.png')
@@ -851,9 +904,9 @@ if __name__ == "__main__":
                     linewidth=4)
             ax.set_ylabel(sig_name_map.get(actuator,actuator))
             ax_ind+=1
-        axes[0].legend(fontsize=legend_fontsize)
-        axes[-1].set_xlabel('Time (s)')
-        axes[0].set_title(f'Shot {shot}')
+        axes[0].legend()
+        axes[-1].set_xlabel('Time (ms)')
+        fig.suptitle(f'Shot {shot}')
         fig.savefig('testtime.png')
     if False:
         fig,axes=plt.subplots(1,figsize=(10,15))
