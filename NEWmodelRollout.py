@@ -13,6 +13,9 @@ from train_helpers import make_bucket
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from dataSettings import get_denormalized_dic,normalizations
 from customDatasetMakers import state_to_dic
+from scipy import stats
+import copy
+from aggregate import inference_model, train_model
 # for fake actuators
 from customDatasetMakers import get_state_indices_dic
 
@@ -268,7 +271,7 @@ if __name__ == "__main__":
                        'zipfit_edensfit_rho', 'qpsi_EFIT01','zeff_rho']
     recorded_actuators=['pinj','ip','volume_EFIT01','rmaxis_EFIT01','aminor_EFIT01']
     prediction_length=15
-    include_const_predictions=True
+    include_const_predictions=False
     plotted_profiles=recorded_profiles
     plotted_actuators=recorded_actuators
     plot_sigma_bar=False
@@ -310,6 +313,18 @@ if __name__ == "__main__":
                     'astrapredictTGLFNNandCurrentZIPFIT': 'tglfnn+q',
                     'astrapredictTGLFNNZIPFIT': 'tglfnn'}
     sigma_bar_title=r'$\sigma$ error on $1.0MA<I_p<1.2MA$'
+
+    common_blend_info={}
+    #common_blend_info['BlenderNonlinear']={'model_type': 'BlenderNonlinear', 'model_filename': 'blenderNonlinear.tar'}
+    # common_blend_info['SimpleAverage']={'model_type': 'SimpleAverage'}
+    common_blend_info['Blender']={'model_type': 'Blender', 'model_filename': 'blender.tar'}
+    # common_blend_info['BlenderProfiles']={'model_type': 'BlenderProfiles', 'model_filename': 'blenderProfiles.tar'}
+    # common_blend_info['BlenderProfilesTimes']={'model_type': 'BlenderProfilesTimes', 'model_filename': 'blenderProfilesTimes.tar'}
+    for blend in common_blend_info:
+        common_blend_info[blend]['relevant_models']=['astrapredictTGLFNNZIPFIT','astrapredictFIXEDTGLFNNZIPFIT','astrapredictFIXEDGBZIPFIT']
+        common_blend_info[blend]['relevant_profiles']=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho']
+    model_colors['Blender']='m'
+    model_name_map['Blender']='meta'
     # comparing d3d to aug to gyrobohm normalized
     if False:
         plotted_profiles=['zipfit_itempfit_rho','zipfit_trotfit_rho','zipfit_edensfit_rho'] #'zipfit_etempfit_rho',
@@ -361,35 +376,42 @@ if __name__ == "__main__":
                          #'astrapredictTGLFNNandScaleDensityZIPFIT']
                          #'astrapredictFULLYZIPFIT',
                          #'astrapredictTGLFNNandScaleDensityZIPFIT', 'astrapredictFULLYandCurrentZIPFIT']
-        ml_configs=['ip_0_900NOdssdenest_RESUMED3config', 'ip_0_1200NOdssdenest_RESUMED3config']
+        ml_configs=['ip_0_1200NOdssdenest_RESUMED3config','ip_0_900NOdssdenest_RESUMED3config']
+        train_blends=copy.deepcopy(common_blend_info)
+        for blend in train_blends:
+            train_blends[blend]['retrain']=True
+            train_blends[blend]['relevant_models'].append('ip_0_900NOdssdenest_RESUMED3config')
+        model_blends.update(train_blends)
         ip_minimum=1.0e6
         ip_maximum=1.2e6
         data_cache_filename='/scratch/gpfs/jabbate/data_sim_1000_1200.pkl' #+'_'.join(considered_sims)+'.pkl'
         ml_cache_filename='/scratch/gpfs/jabbate/ml_sim_1000_1200.pkl' #+'_'.join(considered_sims)+'.pkl'
         raw_data_filename='/projects/EKOLEMEN/profile_predictor/raw_data/diiid_data.h5' #small_test.h5'
-        # for dumping the thing to train for the 1.3 and up testing
-        # make the below True then run aggregate.py, then copy-paste those values into the block below's coefficients
-        if False:
-            model_blends={'ensemble\n(average)': {'coefficients': [0.25,0.25,0.25,0.25],
-                                                  'models': ['astrapredictTGLFNNZIPFIT','astrapredictFIXEDTGLFNNZIPFIT','astrapredictFIXEDGBZIPFIT','ip_0_900NOdssdenest_RESUMED3config']},
-                          'ensemble\n(optimized)': {'coefficients': [0.1461, 0.0210, 0.1894, 0.6436],
-                                                    'models': ['astrapredictTGLFNNZIPFIT','astrapredictFIXEDTGLFNNZIPFIT','astrapredictFIXEDGBZIPFIT','ip_0_900NOdssdenest_RESUMED3config']}}
-            model_colors['ensemble\n(average)']='r'
-            model_colors['ensemble\n(optimized)']='m'
+        model_colors['ensemble\n(average)']='r'
+        model_colors['Blender']='m'
     # comparing for 1.3 and up, using trained coefficients
     elif False:
         model_name_map.update({'ip_0_1200NOdssdenest_RESUMED3config': 'ML'})
         sigma_bar_title='Error (%)' #r'$\sigma$ error on $1.3MA<I_p$'
         plotted_profiles=recorded_profiles[:3]
-        plotted_actuators=recorded_actuators[:1]
+        plotted_actuators=[] #recorded_actuators[:1]
         #considered_sims=[]
-        considered_sims=['astrapredictTGLFNNZIPFIT',#'astrapredictTGLFNNEPEDNNZIPFIT',
+        considered_sims=['astrapredictTGLFNNZIPFIT', #'astrapredictTGLFNNEPEDNNZIPFIT',
                          'astrapredictFIXEDGBZIPFIT','astrapredictFIXEDTGLFNNZIPFIT']
                          #'astrapredictTGLFNNandScaleDensityZIPFIT']
                          #'astrapredictFULLYZIPFIT',
                          #'astrapredictTGLFNNandScaleDensityZIPFIT', 'astrapredictFULLYandCurrentZIPFIT']
         # for individual example cases
-        if False:
+        test_blends=copy.deepcopy(common_blend_info)
+        for blend in test_blends:
+            print('Make sure you already ran this code for the case that trains the weights in the blend')
+            test_blends[blend]['retrain']=False
+            test_blends[blend]['relevant_models'].append('ip_0_1200NOdssdenest_RESUMED3config')
+        model_blends.update(test_blends)
+        if True:
+            plotted_profiles=['zipfit_etempfit_rho','zipfit_trotfit_rho']
+            model_name_map.update({'ip_0_900NOdssdenest_RESUMED3config': 'ML',
+                                   'ip_0_1200NOdssdenest_RESUMED3config': 'ML'})
             ml_configs=['ip_0_1200NOdssdenest_RESUMED3config']
             plot_over_time=True
             plot_over_rho=True
@@ -399,13 +421,7 @@ if __name__ == "__main__":
             plot_over_time=False
             plot_over_rho=False
             plot_sigma_bar=True
-            ml_configs=['allNOdssdenest_RESUMED3config','ip_0_1200NOdssdenest_RESUMED3config']
-            model_blends.update({'ensemble\n(average)': {'coefficients': [0.25,0.25,0.25,0.25],
-                                                         'models': ['astrapredictTGLFNNZIPFIT','astrapredictFIXEDTGLFNNZIPFIT',
-                                                                    'astrapredictFIXEDGBZIPFIT','ip_0_1200NOdssdenest_RESUMED3config']}})
-        model_blends.update({'ensemble\n(optimized)': {'coefficients': [0.1461, 0.0210, 0.1894, 0.6436],
-                                                       'models': ['astrapredictTGLFNNZIPFIT','astrapredictFIXEDTGLFNNZIPFIT',
-                                                                  'astrapredictFIXEDGBZIPFIT','ip_0_1200NOdssdenest_RESUMED3config']}})
+            ml_configs=['ip_0_1200NOdssdenest_RESUMED3config'] #['allNOdssdenest_RESUMED3config','ip_0_1200NOdssdenest_RESUMED3config']
         ip_minimum=1.3e6
         ip_maximum=10e6
         data_cache_filename='/scratch/gpfs/jabbate/data_sim_1300.pkl' #+'_'.join(considered_sims)+'.pkl'
@@ -639,13 +655,53 @@ if __name__ == "__main__":
     extra_prediction_names=[]
     tmp_model_blend_info={}
     for blend in model_blends:
-        coefficients=np.array(model_blends[blend]['coefficients'])
-        relevant_model_info=np.array([all_info[model]['data'] for model in model_blends[blend]['models']])
-        relevant_model_names=model_blends[blend]['models']
-        tmp_model_blend_info[blend]={'names': relevant_model_names, 'data': relevant_model_info}
-        blended_predictions=np.sum(coefficients[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis]*relevant_model_info,axis=0)
+        ### NEW
+        # make mask
+        # make x
+        # make extra_x
+        # make y
+        # normalize
+        relevant_profiles=model_blends[blend]['relevant_profiles']
+        model_type=model_blends[blend]['model_type']
+        #relevant_extra_info=['']
+        profile_inds=[profiles.index(profile) for profile in relevant_profiles]
+        ensemble_sims=np.array([all_info[model]['data'][:,profile_inds,:,:] for model in model_blends[blend]['relevant_models']])
+        truth=all_info['truth']['data'][:,profile_inds,:,:]
+        #extra_info=np.array([all_info['truth']['data'][profile][:,profile_inds,:,:] for profile in relevant_profiles])
+        # normalize for the sake of training
+        for profile in relevant_profiles:
+            profile_ind=relevant_profiles.index(profile)
+            ensemble_sims[:,:,profile_ind,:,:]/=normalizations[profile]['std']
+            truth[:,profile_ind,:,:]/=normalizations[profile]['std']
+        if model_blends[blend]['retrain'] and model_type!='SimpleAverage':
+            # train and save it
+            ensemble_model=train_model(ensemble_sims,truth,
+                                       profiles,relevant_profiles,
+                                       model_blends[blend]['model_filename'],
+                                       model_blends[blend]['model_type'])
+        if model_type=='SimpleAverage':
+            yhat=np.mean(ensemble_sims,axis=0)
+        else:
+            yhat=inference_model(model_blends[blend]['model_filename'],ensemble_sims).detach().numpy()
+        blended_predictions=np.zeros_like(all_info['truth']['data'])
+        for i,profile in enumerate(relevant_profiles):
+            profile_ind=relevant_profiles.index(profile)
+            blended_predictions[:,profile_ind,:,:]=yhat[:,i,:,:]*normalizations[profile]['std']
         extra_predictions+=[blended_predictions]
         extra_prediction_names+=[blend]
+        # for profile in relevant_profiles:
+        #     profile_ind=relevant_profiles.index(profile)
+        #     ensemble_sims[:,:,profile_ind,:,:]/=normalizations[profile]['std']
+        #     truth[:,profile_ind,:,:]/=normalizations[profile]['std']
+        ###
+    # if False: #for blend in model_blends:
+    #     coefficients=np.array(model_blends[blend]['coefficients'])
+    #     relevant_model_info=np.array([all_info[model]['data'] for model in model_blends[blend]['models']])
+    #     relevant_model_names=model_blends[blend]['models']
+    #     tmp_model_blend_info[blend]={'names': relevant_model_names, 'data': relevant_model_info}
+    #     blended_predictions=np.sum(coefficients[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis]*relevant_model_info,axis=0)
+    #     extra_predictions+=[blended_predictions]
+    #     extra_prediction_names+=[blend]
     if include_const_predictions:
         const_predictions=np.ones((num_samples,len(recorded_profiles),prediction_length,dataSettings.nx))
         for time_ind in range(const_predictions.shape[-2]):
