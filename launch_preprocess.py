@@ -22,12 +22,12 @@ def launch_preprocess(baseconfig_filename='preprocess.cfg',submit_runs=False,hyp
 
 #SBATCH -N 1
 #SBATCH -c 32
-#SBATCH --mem 48G
+#SBATCH --mem 24G
 #SBATCH -o {log_filename}
-#SBATCH -t 2-00:00:00
+#SBATCH -t 00:50:00
 
 root_dir={root_dir}
-module load anaconda
+module load anaconda3/2022.5
 conda activate torch
 cd $root_dir
 python -u preprocess_data.py {config_filename}
@@ -45,7 +45,7 @@ if __name__=='__main__':
     hyperparam_adjustments=[{}]
     # an example of how to make hyperparameter adjustments for training models with different inputs across different training sets
     # (standard workflow for data+sim paper)
-    if True:
+    if False:
         hyperparam_adjustments=[]
         # dealing with training set
         preprocessed_filename_dic={'all': {'ip_minimum': 0.0e6, 'ip_maximum': 10.0e6},

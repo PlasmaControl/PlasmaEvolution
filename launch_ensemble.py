@@ -105,7 +105,7 @@ if __name__=='__main__':
                         'inputs': {'calculations': '\n'.join(calculations_dic[which_calcs])}
                     }
                 )
-    elif True:
+    elif False:
         hyperparam_adjustments=[]
         # dealing with training set
         #preprocessed_filename_dic={'augall': 'augall'} #{'augip_0_900': 'augip_0_900', 'augip_0_1200': 'augip_0_1200', 'augall': 'augall'}
