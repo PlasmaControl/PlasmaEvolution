@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset, get_state_indices_dic
-from customModels import IanRNN, IanMLP, HiroLinear
+from customModels import IanRNN, IanMLP, HiroLRAN
 from train_helpers import make_bucket, \
     get_state_mask, get_sample_time_state_mask, masked_loss
 
@@ -13,7 +13,7 @@ import sys
 import shutil
 import time
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLinear': HiroLinear}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN}
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
@@ -34,6 +34,8 @@ lr_stop_epoch=config['optimization'].getint('lr_stop_epoch')
 early_saving=config['optimization'].getboolean('early_saving')
 l1_lambda=config['optimization'].getfloat('l1_lambda')
 l2_lambda=config['optimization'].getfloat('l2_lambda')
+pcs_normalize=config['optimization'].getboolean('pcs_normalize',False)
+inverting_weight=config['optimization'].getfloat('inverting_weight')
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs'].get('parameters','').split()
@@ -97,7 +99,7 @@ start_time=time.time()
 x_train, y_train, shots, times = ian_dataset(train_filename,
                                              profiles,parameters,calculations,actuators,
                                              sort_by_size=True, min_sample_length=min_sample_length,
-                                             use_fancy_normalization=use_fancy_normalization)
+                                             use_fancy_normalization=use_fancy_normalization, pcs_normalize=pcs_normalize)
 print(f'...took {(time.time()-start_time):0.2f}s')
 val_filename=preprocessed_data_filenamebase+'val.pkl'
 print(f'Organizing validation data from {val_filename}')
@@ -105,7 +107,7 @@ start_time=time.time()
 x_val, y_val, shots, times = ian_dataset(val_filename,
                                          profiles,parameters,calculations,actuators,
                                          sort_by_size=True, min_sample_length=min_sample_length,
-                                         use_fancy_normalization=use_fancy_normalization)
+                                         use_fancy_normalization=use_fancy_normalization, pcs_normalize=pcs_normalize)
 print(f'...took {(time.time()-start_time):0.2f}s')
 
 # I divide out by myself since different sequences/batches have different sizes
@@ -199,7 +201,10 @@ for epoch in range(start_epoch, n_epochs):
         for param in model.parameters():
             l2_reg += torch.norm(param, p=2).sum()
         train_loss += l2_lambda * l2_reg'''
-
+        if (model_type=='HiroLRAN' and inverting_weight!=0):
+            padded_x_hat = model.encode_decode(padded_x)
+            inverting_loss = masked_loss(loss_fn, padded_x[:,:,:state_length], padded_x_hat, mask)
+            train_loss += inverting_weight * inverting_loss
         # Backpropagation
         train_loss.backward()
         optimizer.step()

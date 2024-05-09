@@ -147,21 +147,20 @@ class InverseLinear(torch.nn.Module):
             result -= self.biases
 
         return result
-
-class HiroLinear(torch.nn.Module):
-    def __init__(self, input_dim, output_dim,
+    
+class HiroLRAN(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, latent_dim,encoder_dim,
                  negative_slope=0.01,
-                 encoder_extra_layers=1,
-                 decoder_extra_layers=1
+                 encoder_extra_layers=1
                  ):
         super().__init__()
 
         self.input_dim = input_dim
+        self.latent_dim = latent_dim
         self.output_dim = output_dim
         state_dim = output_dim
         # see if this fixes issue with model.to(device) not sending all layers to cuda
         self.LeakyReLU = torch.nn.LeakyReLU(0.01)
-        self.InverseLeakyReLU = InverseLeakyReLU(0.01)
 
         # Define LeakyReLU activation
         self.LeakyReLU = torch.nn.LeakyReLU()
@@ -171,26 +170,52 @@ class HiroLinear(torch.nn.Module):
 
         # Add the first linear layer with LeakyReLU
         self.encoder.add_module('encoding_first_layer', torch.nn.Sequential(
-            torch.nn.Linear(state_dim, state_dim),
+            torch.nn.Linear(state_dim, encoder_dim),
             self.LeakyReLU
         ))
 
         # Add extra layers with LeakyReLU
         for i in range(encoder_extra_layers):
             self.encoder.add_module(f'encoding_extra_layer_{i}', torch.nn.Sequential(
-                torch.nn.Linear(state_dim, state_dim),
+                torch.nn.Linear(encoder_dim, encoder_dim),
                 self.LeakyReLU
             ))
-
+            
+        # Add last linear layer
+        self.encoder.add_module('encoding_last_layer', torch.nn.Sequential(
+            torch.nn.Linear(encoder_dim, latent_dim),
+            self.LeakyReLU
+        ))
         # Initialize the encoding linear layers with identity matrices
-        for i in range(encoder_extra_layers+1):
-            torch.nn.init.eye_(self.encoder[i][0].weight)
+        #for i in range(encoder_extra_layers+1):
+        #    torch.nn.init.eye_(self.encoder[i][0].weight)
 
         # linear A and B matrices
-        self.A = torch.nn.Linear(state_dim, state_dim)
+        self.A = torch.nn.Linear(latent_dim, latent_dim, bias=False)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
-        self.B = torch.nn.Linear(actuator_length, state_dim)
+        self.B = torch.nn.Linear(actuator_length, latent_dim, bias=False)
+        
+        # Create the encoder as a single Sequential list
+        self.decoder = torch.nn.Sequential()
 
+        # Add the first linear layer with LeakyReLU
+        self.decoder.add_module('decoding_first_layer', torch.nn.Sequential(
+            torch.nn.Linear(latent_dim, encoder_dim),
+            self.LeakyReLU
+        ))
+
+        # Add extra layers with LeakyReLU
+        for i in range(encoder_extra_layers):
+            self.decoder.add_module(f'decoding_extra_layer_{i}', torch.nn.Sequential(
+                torch.nn.Linear(encoder_dim, encoder_dim),
+                self.LeakyReLU
+            ))
+            
+        # Add last linear layer (don't wanna finish with a ReLU)
+        self.decoder.add_module('decoding_last_layer', torch.nn.Sequential(
+            torch.nn.Linear(encoder_dim, state_dim),
+        ))
+        
     def forward(self, padded_input, reset_probability=0, nwarmup=0):
         state_dim = self.output_dim
         #state_dim = state_dim.cuda()
@@ -222,13 +247,18 @@ class HiroLinear(torch.nn.Module):
                 ####### SAVE THE OUTPUT
                 prev_output = this_output
                 z_t1[:,t_ind,:] = prev_output.squeeze(1)
-        # decode signal
-        for layer in reversed(self.encoder):
-            z_t1 = self.InverseLeakyReLU(z_t1)
-            inverse = InverseLinear(layer[0])
-            z_t1 = inverse(z_t1)
-        x_t1 = z_t1
+        if torch.cuda.is_available():
+            z_t1=z_t1.to('cuda')
+        x_t1 = self.decoder(z_t1)
         return x_t1
+    
+    def encode_decode(self, padded_input):
+        state_dim = self.output_dim
+        x_t = padded_input[:, :, :state_dim]
+        u_t = padded_input[:,:, state_dim:]
+        z_t = self.encoder(x_t)
+        x_t_hat = self.decoder(z_t)
+        return x_t_hat
 
 # simple mapping, given just actuators over time try to predict profiles
 # I imagine lookback=0 is most sensible
