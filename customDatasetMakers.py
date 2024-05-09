@@ -102,7 +102,7 @@ def preprocess_data(processed_data_filename,
                             within_deviation=False
                 ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=ech_threshold))
                 ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
-                run_ok=not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
+                run_ok=(('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
                 shot_exclusion_info['within_deviation']+=int(not within_deviation)
                 shot_exclusion_info['ech_ok']+=int(not ech_ok)
                 shot_exclusion_info['ich_ok']+=int(not ich_ok)
@@ -188,7 +188,7 @@ def preprocess_data(processed_data_filename,
                             for scalar in scalars:
                                 if not scalars_ok(tmp_scalars_arr[scalar]):
                                     print(f"{scalar}: {tmp_scalars_arr[scalar]}")
-                            print(f"{profiles_ok(tmp_profiles) for tmp_profiles in tmp_profiles_arr.values()}")
+                            print(f"{[profiles_ok(tmp_profiles) for tmp_profiles in tmp_profiles_arr.values()]}")
                 if shot_included:
                     included_shot_count+=1
             if not (nshot+1) % SHOTS_PER_PRINT:
@@ -234,7 +234,10 @@ def ian_dataset(processed_data_filename,
                 profiles,parameters=[],calculations=[],actuators=[],
                 min_sample_length=6,
                 sort_by_size=True,
-                use_fancy_normalization=False):
+                use_fancy_normalization=False,
+                pcs_normalize=False):
+    # in_samples has present profiles + present actuators + future actuators, out_samples has future profiles
+
     with open(processed_data_filename, 'rb') as f:
         processed_data=pickle.load(f)
     # pinj in kW, ech in MW; P_AUXILIARY in kW
@@ -245,8 +248,8 @@ def ian_dataset(processed_data_filename,
         add_zeff_to_processed_data(processed_data)
     # normalize
     processed_data=dataSettings.get_normalized_dic(processed_data,
-                                                   use_fancy_normalization=use_fancy_normalization)
-    in_sample,in_sample,out_sample,out_sample,shots,times=[],[],[],[],[],[]
+                                                   use_fancy_normalization=use_fancy_normalization, pcs_normalize=pcs_normalize)
+    in_sample,in_sample,out_sample,out_sample,shots,start_times=[],[],[],[],[],[]
     in_samples,out_samples=[],[]
     previous_processed_sample_ind, processed_sample_ind=0,0
     for processed_sample_ind in range(len(processed_data['times'])):
@@ -275,7 +278,7 @@ def ian_dataset(processed_data_filename,
                 in_samples.append(torch.Tensor(in_sample))
                 out_samples.append(torch.Tensor(out_sample))
                 shots.append(processed_data['shotnum'][previous_processed_sample_ind][0])
-                times.append(processed_data['times'][previous_processed_sample_ind][0])
+                start_times.append(processed_data['times'][previous_processed_sample_ind][0])
             previous_processed_sample_ind=processed_sample_ind+1
             in_sample, out_sample=[],[]
     if sort_by_size:
@@ -284,8 +287,8 @@ def ian_dataset(processed_data_filename,
         in_samples = [in_samples[i] for i in sorted_indices]
         out_samples = [out_samples[i] for i in sorted_indices]
         shots = [shots[i] for i in sorted_indices]
-        times = [times[i] for i in sorted_indices]
-    return in_samples, out_samples, shots, times
+        start_times = [start_times[i] for i in sorted_indices]
+    return in_samples, out_samples, shots, start_times
 
 # made to be consistent with ian_dataset, double check it matches the above
 # returns a dictionary corresponding to the indices occupied by each signal
