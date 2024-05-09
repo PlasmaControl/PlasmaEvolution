@@ -135,11 +135,11 @@ def get_ml_predictions(x_test, y_test,
 def get_ml_profiles_with_warmup(profiles, warmup_ups):
     return np.concatenate((warmup_ups, profiles), axis=2)
 
-# get the predicted profiles at t+1 with full warmup
-def get_fast_profile_prediction(x_test, model, nwarmup=0):
-    time_length=len(x_test[0])
-    model_output = model(x_test, reset_probability=0, nwarmup=time_length)
-    return model_output
+# get the predicted profiles at t+1 given the full history, outputs are normalized
+def get_fast_profile_prediction(x_test_sample, model):
+    with torch.no_grad():
+        model_output = model(x_test_sample, reset_probability=1)
+    return model_output[:,-1:, :]
 
 def get_considered_models(config_filename, ensemble=True, epoch=None):
     config=configparser.ConfigParser()
