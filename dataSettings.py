@@ -32,6 +32,7 @@ normalizations={
     'aminor_EFIT01': {'mean': 0, 'std': 1},
     'rmaxis_EFIT01': {'mean': 0, 'std': 1},
     'dssdenest': {'mean': 0, 'std': 2},
+    'qmin_EFIT01': {'mean': 0, 'std': 1},
     'kappa_EFIT01': {'mean': 0, 'std': 1},
     'volume_EFIT01': {'mean': 0, 'std': 10},
     'betan_EFIT01': {'mean': 0, 'std': 1},
@@ -75,6 +76,38 @@ sig_bounds={
     'HE': {'min': 0, 'max': 20},
     'XI': {'min': 0, 'max': 20}
 }
+
+pcs_normalizations={
+    'zipfit_etempfit_rho': {'mean': 1.587, 'std': 1.560}, # pcs is in eV but dataSettings is in keV, so divide pcs norms by 1000
+    'zipfit_edensfit_rho': {'mean': 3.977, 'std': 2.764},
+    'zipfit_trotfit_rho': {'mean': 42.93 * 1.0e3, 'std': 58.47 * 1.0e3}, # pcs is in Hz, what is dataSettings in?
+    'zipfit_itempfit_rho': {'mean': 1.23526171875, 'std': 1.3855859375},
+    'pinj': {'mean': 4072.8761393229165, 'std': 3145.5935872395835}, # PCS is in W, here it's kW
+    'tinj': {'mean': 3.38, 'std': 2.70},
+    'ip': {'mean': 989467.8541666666, 'std': 389572.2916666666},
+    'bt': {'mean': 0, 'std': 1}, # No normalizing seen on PCS. This may be wrong
+    'gasA': {'mean': 0.2318070580561956, 'std': 1.6204600868125758},
+    'gasB': {'mean': 0, 'std': 1}, # not present in pcs
+    'gasC': {'mean': 0, 'std': 1}, # not present in pcs
+    'gasD': {'mean': 0, 'std': 1}, # not present in pcs
+    'li_EFIT01': {'mean': 0, 'std': 1}, # not present in pcs
+    'tribot_EFIT01': {'mean': 0.41, 'std': 0.31}, 
+    'tritop_EFIT01': {'mean': 0.60, 'std': 0.31},
+    'aminor_EFIT01': {'mean': 0.586, 'std': 0.023},
+    'rmaxis_EFIT01': {'mean': 0, 'std': 1}, # not present in pcs
+    'qmin_EFIT01': {'mean': 0, 'std': 1},
+    'kappa_EFIT01': {'mean': 1.82, 'std': 0.078},
+    'volume_EFIT01': {'mean': 0, 'std': 10}, # not present in pcs
+    'betan_EFIT01': {'mean': 1.6395551, 'std': 0.793226},
+    'D_tot': {'mean': 0, 'std': 1e2}, # not present in pcs
+    'H_tot': {'mean': 0, 'std': 1e2}, # not present in pcs
+    'Ar_tot': {'mean': 0, 'std': 1e2}, # not present in pcs
+    'Ne_tot': {'mean': 0, 'std': 1e2}, # not present in pcs
+    'He_tot': {'mean': 0, 'std': 1e2}, # not present in pcs
+    'N_tot': {'mean': 0, 'std': 1e2}, # not present in pcs
+    'ech_pwr_total': {'mean': 0, 'std': 1e6}, # pcs is in MW but here it's W
+}
+
 for astrasim in ['astrainterpretive','astrapredictEPEDNNTGLFNNfullyZIPFIT',
                  'astrainterpretZIPFIT', 'astrapredictTGLFNNZIPFIT']:
     for sig in sig_normalizations:
@@ -101,38 +134,6 @@ IMPURITY_FRACTION=0.04
 IMPURITY_Z=6
 KEV_PER_1019_TO_J=1.602e3
 
-# def get_gyro_normalized_dic(input_dic):
-#     output_dic = copy.copy(input_dic)
-#     #Te = np.clip(input_dic['zipfit_etempfit_rho'], 0.01, None)
-#     Ti = np.clip(input_dic['zipfit_itempfit_rho'], 0.01, None)
-#     ne = np.clip(input_dic['zipfit_edensfit_rho'], 0.01, None)
-#     Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(Ti[0][0]), axis=2)) # make Bt flat radial profile
-#     a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(Ti[0][0]), axis=2) # make a flat radial profile
-#     Ip = np.abs(np.repeat(input_dic['ip'][:,:,np.newaxis], len(Ti[0][0]), axis=2))
-#     f_gr = ne / (Ip/(np.pi*a**2))
-#     rho_star = np.sqrt(Ti) / (a * Bt)
-#     output_dic['zipfit_itempfit_rho']=rho_star
-#     output_dic['zipfit_edensfit_rho']=f_gr
-#     return output_dic
-
-# def get_gyro_denormalized_dic(input_dic):
-#     output_dic = copy.copy(input_dic)
-#     #temp_frac = input_dic['zipfit_etempfit_rho']
-#     rho_star = input_dic['zipfit_itempfit_rho']
-#     f_gr = input_dic['zipfit_edensfit_rho']
-#     #Bt = np.abs(np.repeat(input_dic['bt'][:,:,np.newaxis], len(beta[0][0]), axis=2)) # make Bt flat radial profile
-#     #a = np.repeat(input_dic['aminor_EFIT01'][:,:,np.newaxis], len(beta[0][0]), axis=2)
-#     Bt = 2
-#     a = 0.5
-#     Ip = 1000000
-#     Ti = (a * Bt * rho_star)**2
-#     #Te = temp_frac * Ti
-#     ne = f_gr * (Ip/(np.pi*a**2))
-#     #output_dic['zipfit_etempfit_rho']=Te
-#     output_dic['zipfit_itempfit_rho']=Ti
-#     output_dic['zipfit_edensfit_rho']=ne
-#     return output_dic
-
 def get_rotation_sigs(sigs):
     rotation_signals=[]
     for sig in sigs:
@@ -149,7 +150,7 @@ def get_density_sigs(sigs):
 # excluded_sigs for e.g. shotnum and times from preprocessed data
 # assumes dictionary of signals, each of form [...,num_rho] / [...]
 # e.g. (rho) / scalar; (time, rho) / (time); or (nsamples, time, rho) / (nsamples, time)
-def get_normalized_dic(denormed_dic, excluded_sigs=['shotnum','times'], use_fancy_normalization=False):
+def get_normalized_dic(denormed_dic, excluded_sigs=['shotnum','times'], use_fancy_normalization=False, pcs_normalize=False):
     for sig in denormed_dic:
         denormed_dic[sig]=np.array(denormed_dic[sig])
     normed_dic={}
@@ -189,10 +190,13 @@ def get_normalized_dic(denormed_dic, excluded_sigs=['shotnum','times'], use_fanc
         if 'qpsi' in sig:
             normed_dic[sig] = 1. / denormed_dic[sig]
         else:
-            normed_dic[sig] = (denormed_dic[sig] - normalizations[sig]['mean']) / normalizations[sig]['std']
+            if pcs_normalize:
+                normed_dic[sig] = (denormed_dic[sig] - pcs_normalizations[sig]['mean']) / pcs_normalizations[sig]['std']
+            else:
+                normed_dic[sig] = (denormed_dic[sig] - normalizations[sig]['mean']) / normalizations[sig]['std']
     return normed_dic
 
-def get_denormalized_dic(normed_dic, excluded_sigs=['shotnum','times'], use_fancy_normalization=False):
+def get_denormalized_dic(normed_dic, excluded_sigs=['shotnum','times'], use_fancy_normalization=False, pcs_normalize=False):
     for sig in normed_dic:
         normed_dic[sig]=np.array(normed_dic[sig])
     denormed_dic={}
@@ -210,7 +214,10 @@ def get_denormalized_dic(normed_dic, excluded_sigs=['shotnum','times'], use_fanc
         if 'qpsi' in sig:
             denormed_dic[sig] = 1. / normed_dic[sig]
         else:
-            denormed_dic[sig] = (normed_dic[sig] * normalizations[sig]['std']) + normalizations[sig]['mean']
+            if pcs_normalize:
+                denormed_dic[sig] = (normed_dic[sig] * pcs_normalizations[sig]['std']) + pcs_normalizations[sig]['mean']
+            else:
+                denormed_dic[sig] = (normed_dic[sig] * normalizations[sig]['std']) + normalizations[sig]['mean']
     if use_fancy_normalization:
         density_sig='zipfit_edensfit_rho'
         volume_sig='volume_EFIT01'

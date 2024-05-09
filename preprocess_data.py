@@ -38,6 +38,7 @@ datasetParams={'raw_data_filename': raw_data_filename, 'profiles': profiles, 'sc
                'zero_fill_signals': zero_fill_signals,
                'exclude_ech': exclude_ech, 'exclude_ich': exclude_ich,
                'ech_threshold': ech_threshold,
+               'excluded_runs': excluded_runs,
                'max_num_shots': max_num_shots,
                'deviation_cutoff': deviation_cutoff}
 
