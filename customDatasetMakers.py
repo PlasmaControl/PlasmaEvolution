@@ -102,7 +102,7 @@ def preprocess_data(processed_data_filename,
                             within_deviation=False
                 ech_ok=not (exclude_ech and ('ech_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ech_pwr_total'][:], threshold=ech_threshold))
                 ich_ok=not (exclude_ich and ('ich_pwr_total' in f[shot]) and not check_signal_off(f[shot]['ich_pwr_total'][:], threshold=0.1))
-                run_ok=(('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
+                run_ok=not (('run_sql' in f[shot]) and (f[shot]['run_sql'][()].decode('utf-8') in excluded_runs))
                 shot_exclusion_info['within_deviation']+=int(not within_deviation)
                 shot_exclusion_info['ech_ok']+=int(not ech_ok)
                 shot_exclusion_info['ich_ok']+=int(not ich_ok)

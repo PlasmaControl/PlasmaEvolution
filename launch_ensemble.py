@@ -43,7 +43,7 @@ def launch_ensemble(baseconfig_filename='model.cfg',submit_runs=False,n_models=1
 #SBATCH --mem 48G
 #SBATCH -G 1
 #SBATCH -o {log_filename}
-#SBATCH -t 2-00:00:00
+#SBATCH -t 20:00:00
 
 root_dir={root_dir}
 module load anaconda3/2022.5

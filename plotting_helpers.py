@@ -17,6 +17,8 @@ label_map={'zipfit_etempfit_rho': r'$T_e$',
            'qpsi_EFIT01': r'$q$',
            'pinj': r'$P_{NBI}$',
            'tinj': r'$T_{NBI} (N m)$',
+           'betan_EFIT01': r'$\beta_N$',
+           'qmin_EFIT01': r'$q_{min}$',
            'ech_pwr_total': r'$P_{ECH}$',
            'P_AUXILIARY': r'$P_{NBI}+P_{ECH}$',
            'ip': r'$I_p$',
@@ -41,12 +43,12 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
                       denormalized_true_dic, true_times,
                       plotted_profiles, plotted_parameters, plotted_actuators,
                       rho_ind, title):
-    plot_filename=f'{title}.svg'
+    plot_filename=f'plots/{title}.png'
     NSTEPS_PLOTTED=2
     num_columns = 3
     if len(plotted_parameters)>0:
         num_columns = 4
-    fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),num_columns, sharex='col', figsize=(8,5))
+    fig,axes=plt.subplots(max(len(plotted_profiles),len(plotted_parameters),len(plotted_actuators)),num_columns, sharex='col', figsize=(12,5))
     plt.subplots_adjust(hspace=0, wspace=1)
     colors=cm.viridis(np.linspace(0,1,NSTEPS_PLOTTED+1))
     nwarmup=len(true_times)-len(predicted_times)
@@ -78,7 +80,7 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
         axes[i,0].set_ylabel(label_map[actuator])
     if len(plotted_parameters)>0:
         for i,parameter in enumerate(plotted_parameters):
-            axes[i,3].errorbar(predicted_times, predicted_means[parameter][:, 0], yerr=predicted_stds[parameter][:, 0],
+            axes[i,3].errorbar(predicted_times, predicted_means[parameter], yerr=predicted_stds[parameter],
                            label='predicted', c='k', alpha=0.1)
             axes[i,3].plot(true_times, denormalized_true_dic[parameter],
                            label='real', c='k', linestyle='--')
@@ -91,3 +93,5 @@ def modelRollout_plot(predicted_means, predicted_stds, predicted_times,
     fig.suptitle(f'{title}')
     plt.savefig(plot_filename)
     plt.show()
+
+

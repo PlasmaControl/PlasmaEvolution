@@ -29,7 +29,7 @@ root_dir={root_dir}
 module load anaconda3/2022.5
 conda activate torch
 cd $root_dir
-python -u control_sim.py
+python -u control_simulation.py
 
 exit'''
         slurm_filename=os.path.join(output_dir,f'{output_filename_base}job.slurm')

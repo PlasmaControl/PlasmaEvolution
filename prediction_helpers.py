@@ -17,15 +17,19 @@ models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN}
 
 MAX_NUMBER_OF_TIMES=300
 
-# from y_test, get the real profiles at t+1 with warmup removed, equivalent times to ml prediction outputs
+### recall x_test is the in_samples from customDatasetMakers.ian_dataset, y_test is the out_samples. 
+### x_test contains normalized rofiles at t and actuators at t and t+1, y_test contains normalized profiles at t+1
+
+# from y_test, get the real profiles at t+1 to t+prediction_length with warmup removed. This is used to compare with ML output. Also gets the real parameters
 def get_ml_truth(y_test,
                  profiles, parameters,
                  recorded_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho'],
-                 prediction_length=20, nwarmup=0, use_fancy_normalization=False):
+                 prediction_length=-1, nwarmup=0, use_fancy_normalization=False):
     num_samples=len(y_test)
-    num_profiles=len(recorded_profiles)
+    num_profiles=len(profiles)
     # just make this bigger than you think it needs to be
     y=np.ones((num_samples,num_profiles,MAX_NUMBER_OF_TIMES,dataSettings.nx))*np.nan
+    y_params = np.ones((num_samples, len(parameters), MAX_NUMBER_OF_TIMES))*np.nan
     for sample_ind in range(num_samples):
         output_dic=state_to_dic(y_test[sample_ind], profiles, parameters)
         #### get input stuff (profile warmup and actuator trajectories
@@ -39,21 +43,28 @@ def get_ml_truth(y_test,
         for profile_ind,profile in enumerate(profiles):
             num_times=len(denormed_dic[profile][nwarmup:])
             y[sample_ind,profile_ind,:num_times]=denormed_dic[profile][nwarmup:]
-    return y[:,:,:prediction_length]
+        for param_ind,param in enumerate(parameters):
+            num_times=len(denormed_dic[param][nwarmup:])
+            y_params[sample_ind,param_ind,:num_times]=denormed_dic[param][nwarmup:]
+    return y[:,:,:prediction_length], y_params[:,:,:prediction_length]
 
-# get the profiles for warmup times and actuator trajectories from x_test
+# get the profiles for warmup times from x_test
 def get_ml_profile_warmup(x_test,
                           profiles, parameters, calculations, actuators,
                           recorded_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho'],
-                          nwarmup=0, use_fancy_normalization=False):
+                          recorded_parameters=[],
+                          nwarmup=3, use_fancy_normalization=False):
     num_samples=len(x_test)
     profile_warmup=np.ones((num_samples,len(recorded_profiles),nwarmup+1,dataSettings.nx))*np.nan
+    parameter_warmup = np.ones((num_samples, len(recorded_parameters), nwarmup+1))*np.nan
     for sample_ind in range(num_samples):
         output_dic=state_to_dic(x_test[sample_ind], profiles, parameters, calculations, actuators)
         denormed_dic=get_denormalized_dic(output_dic, use_fancy_normalization=use_fancy_normalization)
         for profile_ind,profile in enumerate(recorded_profiles):
             profile_warmup[sample_ind,profile_ind]=denormed_dic[profile][:nwarmup+1]
-    return profile_warmup
+        for param_ind,param in enumerate(recorded_parameters):
+            parameter_warmup[sample_ind,param_ind]=denormed_dic[param][:nwarmup+1]
+    return profile_warmup, parameter_warmup
 
 # get the actuator trajectory during warmup and prediction times
 def get_ml_actuator_trajectory(x_test, 
@@ -78,6 +89,7 @@ def get_ml_predictions(x_test, y_test,
                 considered_models,
                 recorded_profiles=['zipfit_etempfit_rho','zipfit_itempfit_rho','zipfit_trotfit_rho'],
                 recorded_actuators=['pinj'],
+                recorded_parameters=[],
                 prediction_length=20,nwarmup=0,
                 use_fancy_normalization=False,
                 bucket_size=10000):
@@ -86,7 +98,9 @@ def get_ml_predictions(x_test, y_test,
     test_length_buckets = [[len(arr) for arr in bucket] for bucket in test_x_buckets]
     num_keys=len(x_test)
     num_profiles=len(recorded_profiles)
+    num_parameters=len(recorded_parameters)
     yhat=np.ones((num_keys,num_profiles,MAX_NUMBER_OF_TIMES,dataSettings.nx))*np.nan
+    yhat_parameters = np.ones((num_keys, num_parameters, MAX_NUMBER_OF_TIMES))*np.nan
     begin_time=time.time()
     prev_time=begin_time
     evaluation_begin_time=time.time()
@@ -124,13 +138,14 @@ def get_ml_predictions(x_test, y_test,
                 for profile_ind,profile in enumerate(recorded_profiles):
                     num_times=len(denormed_dic[profile][nwarmup:])
                     yhat[sample_ind,profile_ind,:num_times]=denormed_dic[profile][nwarmup:]
+                for parameter_ind, parameter in enumerate(recorded_parameters):
+                    num_times=len(denormed_dic[parameter][nwarmup:])
+                    yhat_parameters[sample_ind,parameter_ind,:num_times]=denormed_dic[parameter][nwarmup:]
                 sample_ind+=1
-                #for sig in parameters:
-                    #yhat[sample_ind,profile_ind,:prediction_length]=denormed_dic[sig][nwarmup:prediction_length+nwarmup]
             print(f'Bucket {which_bucket+1}/{len(test_x_buckets)} took {time.time()-prev_time:0.0f}s')
             prev_time=time.time()
     print(f'Took {time.time()-begin_time:.2f} s')
-    return yhat[:,:,:prediction_length]
+    return yhat[:,:,:prediction_length], yhat_parameters[:,:,:prediction_length]
 
 def get_ml_profiles_with_warmup(profiles, warmup_ups):
     return np.concatenate((warmup_ups, profiles), axis=2)
