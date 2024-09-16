@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset, get_state_indices_dic
-from customModels import IanRNN, IanMLP, HiroLRAN
+from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRANDiag
 from train_helpers import make_bucket, \
     get_state_mask, get_sample_time_state_mask, masked_loss
 
@@ -13,7 +13,7 @@ import sys
 import shutil
 import time
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRANDiag': HiroLRANDiag}
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
@@ -36,6 +36,7 @@ l1_lambda=config['optimization'].getfloat('l1_lambda')
 l2_lambda=config['optimization'].getfloat('l2_lambda')
 pcs_normalize=config['optimization'].getboolean('pcs_normalize',False)
 inverting_weight=config['optimization'].getfloat('inverting_weight')
+latent_loss_weight=config['optimization'].getfloat('latent_loss_weight')
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs'].get('parameters','').split()
@@ -146,10 +147,13 @@ val_length_buckets = [[len(arr) for arr in bucket] for bucket in val_x_buckets]
 
 # apply filter to handle case of freezing layers (happens above) for model tuning
 optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-5)
+
 #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,50,70], gamma=lr_gamma, verbose=True)
 #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, lr_gamma, last_epoch=lr_stop_epoch)
 if tune_model and resume_training:
-    optimizer.load_state_dict(saved_state['optimizer_state_dict'])
+    #print(optimizer.state_dict()['param_groups'])
+    #print(saved_state['optimizer_state_dict']['param_groups'])
+    #optimizer.load_state_dict(saved_state['optimizer_state_dict'])
     avg_train_losses=saved_state['train_losses']
     avg_val_losses=saved_state['val_losses']
 else:
@@ -205,6 +209,10 @@ for epoch in range(start_epoch, n_epochs):
             padded_x_hat = model.encode_decode(padded_x)
             inverting_loss = masked_loss(loss_fn, padded_x[:,:,:state_length], padded_x_hat, mask)
             train_loss += inverting_weight * inverting_loss
+
+        if (model_type=='HiroLRAN' and latent_loss_weight!=0):
+            latent_loss = model.latent_loss() # need to put a proper function here!
+            train_loss += latent_loss_weight * latent_loss
         # Backpropagation
         train_loss.backward()
         optimizer.step()

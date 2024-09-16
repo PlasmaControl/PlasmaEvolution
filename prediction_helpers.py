@@ -8,12 +8,12 @@ from train_helpers import make_bucket
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 import re
 import glob
-from customModels import IanRNN, IanMLP, HiroLRAN
+from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRANDiag
 from dataSettings import get_denormalized_dic,normalizations
 from customDatasetMakers import state_to_dic, dic_to_state
 import time
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRANDiag': HiroLRANDiag}
 
 MAX_NUMBER_OF_TIMES=300
 

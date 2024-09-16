@@ -148,6 +148,130 @@ class InverseLinear(torch.nn.Module):
 
         return result
     
+class DiagonalLinear(torch.nn.Module):
+    def __init__(self, latent_dim):
+        super(DiagonalLinear, self).__init__()
+        # Create a learnable vector of diagonal elements
+        self.diagonal = torch.nn.Parameter(torch.randn(latent_dim))
+
+    def forward(self, x):
+        # Construct the diagonal matrix from the vector
+        A_diag = torch.diag(self.diagonal)
+        return torch.matmul(x, A_diag)
+
+# same as HiroLRAN but with a diagonal A matrix
+class HiroLRANDiag(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, latent_dim,encoder_dim,
+                 negative_slope=0.01,
+                 encoder_extra_layers=1
+                 ):
+        super().__init__()
+
+        self.input_dim = input_dim
+        self.latent_dim = latent_dim
+        self.output_dim = output_dim
+        state_dim = output_dim
+        # see if this fixes issue with model.to(device) not sending all layers to cuda
+        self.LeakyReLU = torch.nn.LeakyReLU(0.01)
+
+        # Define LeakyReLU activation
+        self.LeakyReLU = torch.nn.LeakyReLU()
+
+        # Create the encoder as a single Sequential list
+        self.encoder = torch.nn.Sequential()
+
+        # Add the first linear layer with LeakyReLU
+        self.encoder.add_module('encoding_first_layer', torch.nn.Sequential(
+            torch.nn.Linear(state_dim, encoder_dim),
+            self.LeakyReLU
+        ))
+
+        # Add extra layers with LeakyReLU
+        for i in range(encoder_extra_layers):
+            self.encoder.add_module(f'encoding_extra_layer_{i}', torch.nn.Sequential(
+                torch.nn.Linear(encoder_dim, encoder_dim),
+                self.LeakyReLU
+            ))
+            
+        # Add last linear layer
+        self.encoder.add_module('encoding_last_layer', torch.nn.Sequential(
+            torch.nn.Linear(encoder_dim, latent_dim),
+            self.LeakyReLU
+        ))
+        # Initialize the encoding linear layers with identity matrices
+        #for i in range(encoder_extra_layers+1):
+        #    torch.nn.init.eye_(self.encoder[i][0].weight)
+
+        # linear A and B matrices
+        self.A = DiagonalLinear(latent_dim)
+        actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
+        self.B = torch.nn.Linear(actuator_length, latent_dim, bias=False)
+        
+        # Create the encoder as a single Sequential list
+        self.decoder = torch.nn.Sequential()
+
+        # Add the first linear layer with LeakyReLU
+        self.decoder.add_module('decoding_first_layer', torch.nn.Sequential(
+            torch.nn.Linear(latent_dim, encoder_dim),
+            self.LeakyReLU
+        ))
+
+        # Add extra layers with LeakyReLU
+        for i in range(encoder_extra_layers):
+            self.decoder.add_module(f'decoding_extra_layer_{i}', torch.nn.Sequential(
+                torch.nn.Linear(encoder_dim, encoder_dim),
+                self.LeakyReLU
+            ))
+            
+        # Add last linear layer (don't wanna finish with a ReLU)
+        self.decoder.add_module('decoding_last_layer', torch.nn.Sequential(
+            torch.nn.Linear(encoder_dim, state_dim),
+        ))
+        
+    def forward(self, padded_input, reset_probability=0, nwarmup=0):
+        state_dim = self.output_dim
+        #state_dim = state_dim.cuda()
+        x_t = padded_input[:, :, :state_dim]
+        actuator_length = (self.input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
+        u_t = padded_input[:, :, state_dim:state_dim+actuator_length]
+        u_t1 = padded_input[:, :, state_dim+actuator_length:]
+        z_t = self.encoder(x_t)
+        # inference without autoregression (20x faster)
+        if reset_probability>=1:
+            z_t1=self.A(z_t) + self.B(u_t1)
+        # inference with probabilistic autoregression
+        else:
+            # number of times
+            seq_len=padded_input.size()[-2]
+            # padded_output dim is padded_input without actuator chunk
+            z_t1=torch.zeros(z_t.size())
+            # maintain previous output for autoregression (start at true t=0 state)
+            prev_output=z_t[:,0,:].unsqueeze(1)
+            for t_ind in range(seq_len):
+                if (t_ind<=nwarmup) or (torch.rand(1).item() < reset_probability):
+                    # predict from true state (don't autoregress this timestep)
+                    this_input = z_t[:, t_ind, :].unsqueeze(1)
+                else:
+                    # autoregress: use previous output with actuators
+                    this_input=prev_output
+                ####### EVOLVE THE STATE
+                this_output=self.A(this_input) + self.B(u_t1[:, t_ind, :].unsqueeze(1))
+                ####### SAVE THE OUTPUT
+                prev_output = this_output
+                z_t1[:,t_ind,:] = prev_output.squeeze(1)
+        if torch.cuda.is_available():
+            z_t1=z_t1.to('cuda')
+        x_t1 = self.decoder(z_t1)
+        return x_t1
+    
+    def encode_decode(self, padded_input):
+        state_dim = self.output_dim
+        x_t = padded_input[:, :, :state_dim]
+        u_t = padded_input[:,:, state_dim:]
+        z_t = self.encoder(x_t)
+        x_t_hat = self.decoder(z_t)
+        return x_t_hat
+
 class HiroLRAN(torch.nn.Module):
     def __init__(self, input_dim, output_dim, latent_dim,encoder_dim,
                  negative_slope=0.01,
