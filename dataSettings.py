@@ -33,9 +33,11 @@ normalizations={
     'rmaxis_EFIT01': {'mean': 0, 'std': 1},
     'dssdenest': {'mean': 0, 'std': 2},
     'qmin_EFIT01': {'mean': 0, 'std': 1},
+    'qmin_EFITRT2': {'mean': 0, 'std': 1},
     'kappa_EFIT01': {'mean': 0, 'std': 1},
     'volume_EFIT01': {'mean': 0, 'std': 10},
     'betan_EFIT01': {'mean': 0, 'std': 1},
+    'betan_EFITRT2': {'mean': 0, 'std': 1},
     'epedHeight': {'mean': 0, 'std': 5e-3},
     'eped_te_prediction': {'mean': 0, 'std': 1},
     'epedHeightForNe1': {'mean': 0, 'std': 5e-3},
@@ -51,6 +53,18 @@ normalizations={
     'ech_pwr_total': {'mean': 0, 'std': 1e6},
     'P_AUXILIARY': {'mean': 0, 'std': 2e3},       # custom signals,
     'zeff_rho': {'mean': 0, 'std': 2}, # defined in customDatasetMakers ad hoc
+    'p' : {'mean': 0, 'std': 100},
+    'qinv': {'mean': 0, 'std': 1},
+    '1/q': {'mean': 0, 'std': 1},
+    'j': {'mean': 0, 'std': 1},
+    'ne': {'mean': 0, 'std': 10},
+    'Te': {'mean': 0, 'std': 1},
+    'Vtor': {'mean': 0, 'std': 100},
+    'Ti': {'mean': 0, 'std': 1},
+    'Vpol': {'mean': 0, 'std': 100},
+    'bmspinj': {'mean': 0, 'std': 2e3},
+    'bmstinj': {'mean': 0, 'std': 2},
+    'PCBCOIL': {'mean': 0, 'std': 100000}
     }
 clipped_signals={}
 
