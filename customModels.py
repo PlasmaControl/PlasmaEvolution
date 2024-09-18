@@ -147,7 +147,7 @@ class InverseLinear(torch.nn.Module):
             result -= self.biases
 
         return result
-    
+
 class DiagonalLinear(torch.nn.Module):
     def __init__(self, latent_dim):
         super(DiagonalLinear, self).__init__()
@@ -158,6 +158,21 @@ class DiagonalLinear(torch.nn.Module):
         # Construct the diagonal matrix from the vector
         A_diag = torch.diag(self.diagonal)
         return torch.matmul(x, A_diag)
+
+'''class DiagonalLinear(torch.nn.Module):
+    def __init__(self, latent_dim):
+        super(DiagonalLinear, self).__init__()
+        # Create a learnable vector of diagonal elements
+        self.diagonal = torch.nn.Parameter(torch.randn(latent_dim))
+
+    def forward(self, x):
+        # Clamp the diagonal values to be between -0.5 and 0.5
+        clamped_diagonal = torch.clamp(self.diagonal, min=-0.5, max=0.5)
+        
+        # Construct the diagonal matrix from the clamped vector
+        A_diag = torch.diag(clamped_diagonal)
+        
+        return torch.matmul(x, A_diag)'''
 
 # same as HiroLRAN but with a diagonal A matrix
 class HiroLRANDiag(torch.nn.Module):
@@ -313,7 +328,7 @@ class HiroLRAN(torch.nn.Module):
         # Initialize the encoding linear layers with identity matrices
         #for i in range(encoder_extra_layers+1):
         #    torch.nn.init.eye_(self.encoder[i][0].weight)
-
+        self.batch_norm = torch.nn.BatchNorm1d(latent_dim)
         # linear A and B matrices
         self.A = torch.nn.Linear(latent_dim, latent_dim, bias=False)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
@@ -348,9 +363,17 @@ class HiroLRAN(torch.nn.Module):
         u_t = padded_input[:, :, state_dim:state_dim+actuator_length]
         u_t1 = padded_input[:, :, state_dim+actuator_length:]
         z_t = self.encoder(x_t)
+        z_t = z_t.permute(0, 2, 1)
+
+        # Apply batch normalization
+        z_t = self.batch_norm(z_t)
+
+        # Permute back to original shape (batch_size, seq_len, latent_dim)
+        z_t = z_t.permute(0, 2, 1)
         # inference without autoregression (20x faster)
         if reset_probability>=1:
             z_t1=self.A(z_t) + self.B(u_t1)
+
         # inference with probabilistic autoregression
         else:
             # number of times
