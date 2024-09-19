@@ -62,7 +62,7 @@ normalizations={
     'Vtor': {'mean': 0, 'std': 100},
     'Ti': {'mean': 0, 'std': 1},
     'Vpol': {'mean': 0, 'std': 100},
-    'bmspinj': {'mean': 0, 'std': 2e3},
+    'bmspinj': {'mean': 0, 'std': 2},
     'bmstinj': {'mean': 0, 'std': 2},
     'PCBCOIL': {'mean': 0, 'std': 100000}
     }
