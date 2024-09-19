@@ -216,7 +216,7 @@ class HiroLRANDiag(torch.nn.Module):
         # Initialize the encoding linear layers with identity matrices
         #for i in range(encoder_extra_layers+1):
         #    torch.nn.init.eye_(self.encoder[i][0].weight)
-
+        self.batch_norm = torch.nn.BatchNorm1d(latent_dim)
         # linear A and B matrices
         self.A = DiagonalLinear(latent_dim)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
@@ -251,6 +251,13 @@ class HiroLRANDiag(torch.nn.Module):
         u_t = padded_input[:, :, state_dim:state_dim+actuator_length]
         u_t1 = padded_input[:, :, state_dim+actuator_length:]
         z_t = self.encoder(x_t)
+        z_t = z_t.permute(0, 2, 1)
+
+        # Apply batch normalization
+        z_t = self.batch_norm(z_t)
+
+        # Permute back to original shape (batch_size, seq_len, latent_dim)
+        z_t = z_t.permute(0, 2, 1)
         # inference without autoregression (20x faster)
         if reset_probability>=1:
             z_t1=self.A(z_t) + self.B(u_t1)
