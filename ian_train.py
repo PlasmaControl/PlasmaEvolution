@@ -195,12 +195,13 @@ for epoch in range(start_epoch, n_epochs):
                                model_output, padded_y,
                                mask)
         # L1 regularization
-        '''l1_reg = torch.tensor(0.0, device=device)
-        for param in model.parameters():
-            l1_reg += torch.abs(param).sum()
+        l1_reg = torch.tensor(0.0, device=device)
+        for name, param in model.named_parameters():
+            if 'B.weight' in name or 'A.weight' in name:
+                l1_reg += torch.norm(param, 1)
         train_loss += l1_lambda*l1_reg # lambda is the hyperparameter defined in cfg
 
-        # L2 regularization
+        '''# L2 regularization
         l2_reg = torch.tensor(0.0, device=device)
         for param in model.parameters():
             l2_reg += torch.norm(param, p=2).sum()
