@@ -34,6 +34,7 @@ lr_stop_epoch=config['optimization'].getint('lr_stop_epoch')
 early_saving=config['optimization'].getboolean('early_saving')
 l1_lambda=config['optimization'].getfloat('l1_lambda')
 l2_lambda=config['optimization'].getfloat('l2_lambda')
+var_lambda=config['optimization'].getfloat('var_lambda')
 pcs_normalize=config['optimization'].getboolean('pcs_normalize',False)
 inverting_weight=config['optimization'].getfloat('inverting_weight')
 latent_loss_weight=config['optimization'].getfloat('latent_loss_weight')
@@ -200,6 +201,18 @@ for epoch in range(start_epoch, n_epochs):
             if 'B.weight' in name or 'A.weight' in name:
                 l1_reg += torch.norm(param, 1)
         train_loss += l1_lambda*l1_reg # lambda is the hyperparameter defined in cfg
+
+        '''        if (model_type=='HiroLRAN' or model_type=='HiroLRANDiag' and var_lambda!=0):
+            latent_output = model.encoder(padded_x[:,:,:state_length])
+            target_variance = 0  # Target variance for the latent space
+            # Compute the variance along the latent_index dimension (dim=-1)
+            latent_var = torch.var(latent_output, dim=-1)  # Variance per (batch, time) pair
+    
+            # Regularization term: penalize deviation from target variance
+            reg_loss = torch.mean((latent_var - target_variance) ** 2)
+
+            train_loss += var_lambda * reg_loss
+            '''
 
         '''# L2 regularization
         l2_reg = torch.tensor(0.0, device=device)

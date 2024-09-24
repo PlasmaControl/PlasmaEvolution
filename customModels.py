@@ -148,31 +148,32 @@ class InverseLinear(torch.nn.Module):
 
         return result
 
-class DiagonalLinear(torch.nn.Module):
-    def __init__(self, latent_dim):
-        super(DiagonalLinear, self).__init__()
-        # Create a learnable vector of diagonal elements
-        self.diagonal = torch.nn.Parameter(torch.randn(latent_dim))
-
-    def forward(self, x):
-        # Construct the diagonal matrix from the vector
-        A_diag = torch.diag(self.diagonal)
-        return torch.matmul(x, A_diag)
-
 '''class DiagonalLinear(torch.nn.Module):
     def __init__(self, latent_dim):
         super(DiagonalLinear, self).__init__()
         # Create a learnable vector of diagonal elements
-        self.diagonal = torch.nn.Parameter(torch.randn(latent_dim))
+        self.diagonal = torch.nn.Parameter(torch.full((latent_dim,), 0.5))
+        #self.diagonal = torch.nn.Parameter(torch.randn(latent_dim))
+    def forward(self, x):
+        # Construct the diagonal matrix from the vector
+        A_diag = torch.diag(self.diagonal)
+        return torch.matmul(x, A_diag)'''
 
+class DiagonalLinear(torch.nn.Module):
+    def __init__(self, latent_dim):
+        super(DiagonalLinear, self).__init__()
+        # Create a learnable vector of diagonal elements
+        #self.diagonal = torch.nn.Parameter(torch.randn(latent_dim))
+        #self.diagonal = torch.nn.Parameter(torch.rand((latent_dim,)) - 0.5)
+        self.diagonal = torch.nn.Parameter(torch.ones(latent_dim) - 0.5)
     def forward(self, x):
         # Clamp the diagonal values to be between -0.5 and 0.5
-        clamped_diagonal = torch.clamp(self.diagonal, min=-0.5, max=0.5)
+        clamped_diagonal = torch.clamp(self.diagonal, min=-0.95, max=0.95)
         
         # Construct the diagonal matrix from the clamped vector
         A_diag = torch.diag(clamped_diagonal)
         
-        return torch.matmul(x, A_diag)'''
+        return torch.matmul(x, A_diag)
 
 # same as HiroLRAN but with a diagonal A matrix
 class HiroLRANDiag(torch.nn.Module):
@@ -221,7 +222,7 @@ class HiroLRANDiag(torch.nn.Module):
         self.A = DiagonalLinear(latent_dim)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
         self.B = torch.nn.Linear(actuator_length, latent_dim, bias=False)
-        
+        #self.B = DiagonalLinear(latent_dim)
         # Create the encoder as a single Sequential list
         self.decoder = torch.nn.Sequential()
 
@@ -258,6 +259,7 @@ class HiroLRANDiag(torch.nn.Module):
 
         # Permute back to original shape (batch_size, seq_len, latent_dim)
         z_t = z_t.permute(0, 2, 1)
+
         # inference without autoregression (20x faster)
         if reset_probability>=1:
             z_t1=self.A(z_t) + self.B(u_t1)
