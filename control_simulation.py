@@ -3,7 +3,7 @@ import torch
 import configparser
 import control
 from dataSettings import get_denormalized_dic, get_normalized_dic
-from customModels import IanRNN, HiroLRAN
+from customModels import IanRNN, HiroLRAN, HiroLRANReLU, HiroLRANDiag
 from train_helpers import get_state_mask, get_sample_time_state_mask, masked_loss
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -17,10 +17,9 @@ from prediction_helpers import get_ml_truth, get_ml_profile_warmup, get_ml_actua
 
 
 
-lstm_model_name = 'HiroLRAN_betan6'
-#lstm_model_name = 'HiroLRAN_etemp'
+lstm_model_name = 'HiroLRAN_ne_noGas_all'
 #lstm_model_name = 'HiroLRAN_alldiiid'
-linear_model_name = 'HiroLRAN_betan6'
+linear_model_name = lstm_model_name
 
 config_filename = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{lstm_model_name}config'
 config=configparser.ConfigParser()
@@ -44,7 +43,7 @@ lstm_model = prediction_helpers.get_considered_models(config_filename, ensemble=
 linear_model = prediction_helpers.get_considered_models(linear_config_filename, ensemble=False)[0]
 
 x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True)
-shot_index = 50
+shot_index = 55
 wanted_sample = x_test[shot_index]
 nwarmup = 3
 starting_index = 0
@@ -71,6 +70,7 @@ target_params = torch.unsqueeze(target_params, 0).float()
 #target_params = target_params * 0 + 3
 target_z_t = linear_model.encoder(target_params).detach().numpy()
 
+# normalize Q!!!
 Q_weights = np.ones(latent_dim)
 Q = np.eye(latent_dim)
 for i in range(latent_dim):
@@ -78,25 +78,39 @@ for i in range(latent_dim):
 Q = csr_matrix(Q)
 
 QN = Q
-R_array = np.eye(len(controller_actuators))*0.01
-#R_array[controller_actuators.index('D_tot'), controller_actuators.index('D_tot')] = 1
+R_array = np.eye(len(controller_actuators))*0.1
+
+# normalize R to max values of actuators
+#R_array[3][3] = 0.00001
+#R_array[4][4] = 0.00001
+
+#R_array[controller_actuators.index('D_tot'), con#troller_actuators.index('D_tot')] = 1
 R = csr_matrix(R_array)
 
-# - linear constraints
-umin = np.zeros(len(controller_actuators))
-umax = np.ones(len(controller_actuators))*7
+# - linear constraints (# bmspinj, bmstinj, ip, pcbcoil, dstdenp, ech_pwr_tot)
+#umin = np.array([4/2, 2/2, 0, 0, 4/2, 0])
+#umax = np.array([10/2, 4/2, 1, 1, 8/2, 3])
+#umin = np.array([-2/2])
+#umax = np.array([10/2])
+
+
+umin = np.array([-np.inf]*len(controller_actuators))
+umax = np.array([np.inf]*len(controller_actuators))
+#umin[2] = -1
+#umin[4] = 0
 xmin = np.array([-np.inf]*latent_dim)
 xmax = np.array([np.inf]*latent_dim)
 
 # set actuators that I don't want to control
-blocked_actuators = ['tinj', 'ip', 'bt','tribot_EFIT01', 'tritop_EFIT01', 'kappa_EFIT01', 'aminor_EFIT01', 'volume_EFIT01', 'rmaxis_EFIT01']
-#blocked_actuators = []
+blocked_actuators = ['ip','PCBCOIL']
+
 for actuator in blocked_actuators:
     true_value = wanted_sample[starting_index+nwarmup, current_controller_indices[controller_actuators.index(actuator)]].clone().item()
     umin[controller_actuators.index(actuator)] = true_value
     umax[controller_actuators.index(actuator)] = true_value
 
-Ad = sparse.csc_matrix(linear_model.A.weight.data)
+#Ad = sparse.csc_matrix(linear_model.A.weight.data)
+Ad = sparse.csc_matrix(torch.diag(linear_model.A.diagonal.data))
 Bd = sparse.csc_matrix(linear_model.B.weight.data)
 [nx, nu] = Bd.shape
 
@@ -129,7 +143,7 @@ for i in range(nsim):
         raise ValueError('OSQP did not solve the problem!')
     
     ctrl = torch.tensor(res.x[-N*nu:-(N-1)*nu]).float()
-
+    print(ctrl)
     #x=res.x
     #obj_val = 0.5 * np.dot(x, P.dot(x)) + np.dot(q, x)
     #print(f'obj')
@@ -161,6 +175,7 @@ for i in range(nsim):
     u[:nx] = -predicted_z_t
 
     # Update targets
+
     q = np.hstack([np.kron(np.ones(N), -Q@(target_z_t[0,nwarmup + i,:])), -QN@(target_z_t[0,nwarmup + i,:]), np.zeros(N*nu)])
     
     prob.update(l=l, u=u, q=q)
@@ -173,8 +188,8 @@ output_dict = {
 
 prediction_length = end_index - starting_index - nwarmup
 # got to input the correct times here
-true_actuator_trajectory = get_ml_actuator_trajectory(x_test[shot_index:shot_index+1], profiles, parameters, calculations, actuators, nwarmup=nwarmup, prediction_length=prediction_length) # nwarmup and full prediction actuators
-true_warmup_profiles, true_warmup_parameters = get_ml_profile_warmup(x_test[shot_index:shot_index+1], profiles, parameters, calculations, actuators, recorded_profiles=profiles, recorded_parameters=parameters, nwarmup=nwarmup) 
+true_actuator_trajectory = get_ml_actuator_trajectory(x_test[shot_index:shot_index+1][starting_index:end_index], profiles, parameters, calculations, actuators, nwarmup=nwarmup, prediction_length=prediction_length) # nwarmup and full prediction actuators
+true_warmup_profiles, true_warmup_parameters = get_ml_profile_warmup(x_test[shot_index:shot_index+1][starting_index:end_index], profiles, parameters, calculations, actuators, recorded_profiles=profiles, recorded_parameters=parameters, nwarmup=nwarmup) 
 true_profiles, true_parameters = get_ml_truth(target_params, profiles, parameters, calculations, nwarmup=nwarmup, prediction_length=prediction_length) # get true state at t+1
 
 controlled_actuator_trajectory = get_ml_actuator_trajectory(simulated_state, profiles, parameters, calculations, actuators, nwarmup=nwarmup, prediction_length=prediction_length)
@@ -195,7 +210,7 @@ output_dict['controlled']['actuators'] = controlled_actuator_trajectory
 output_dict['time'] = np.arange(len(true_actuator_trajectory[0,0,:]))*20
 
 import pickle
-with open(f'control_pickles/improved{lstm_model_name}{linear_model_name}{shot_index}.pkl', 'wb') as file:
+with open(f'control_pickles/{lstm_model_name}{linear_model_name}{shot_index}.pkl', 'wb') as file:
     # Pickle the array and write it to the file
     pickle.dump(output_dict, file)
 
