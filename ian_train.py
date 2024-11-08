@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset, get_state_indices_dic
-from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRANDiag
+from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRANDiag, HiroLRANReLU
 from train_helpers import make_bucket, \
     get_state_mask, get_sample_time_state_mask, masked_loss
 
@@ -13,7 +13,7 @@ import sys
 import shutil
 import time
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRANDiag': HiroLRANDiag}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRANDiag': HiroLRANDiag, 'HiroLRANReLU': HiroLRANReLU}
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
