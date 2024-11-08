@@ -24,7 +24,7 @@ def launch_preprocess(baseconfig_filename='preprocess.cfg',submit_runs=False,hyp
 #SBATCH -c 32
 #SBATCH --mem 24G
 #SBATCH -o {log_filename}
-#SBATCH -t 00:50:00
+#SBATCH -t 20:00:00
 
 root_dir={root_dir}
 module load anaconda3/2022.5
