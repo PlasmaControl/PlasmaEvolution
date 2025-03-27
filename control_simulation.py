@@ -17,10 +17,10 @@ from prediction_helpers import get_ml_truth, get_ml_profile_warmup, get_ml_actua
 
 
 
-lstm_model_name = 'HiroLRAN_ne_noGas_all'
+lstm_model_name = 'HiroLRAN_v9'
 #lstm_model_name = 'HiroLRAN_alldiiid'
-linear_model_name = lstm_model_name
-
+#linear_model_name = lstm_model_name
+linear_model_name = 'HiroLRAN_v9'
 config_filename = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{lstm_model_name}config'
 config=configparser.ConfigParser()
 config.read(config_filename)
@@ -43,7 +43,7 @@ lstm_model = prediction_helpers.get_considered_models(config_filename, ensemble=
 linear_model = prediction_helpers.get_considered_models(linear_config_filename, ensemble=False)[0]
 
 x_test, y_test, shots, times =customDatasetMakers.ian_dataset(data_filename,profiles,parameters,calculations,actuators,sort_by_size=True)
-shot_index = 55
+shot_index = 0
 wanted_sample = x_test[shot_index]
 nwarmup = 3
 starting_index = 0
@@ -78,11 +78,9 @@ for i in range(latent_dim):
 Q = csr_matrix(Q)
 
 QN = Q
-R_array = np.eye(len(controller_actuators))*0.1
-
+R_array = np.eye(len(controller_actuators))*0.001
+#R_array[-1,-1] = 0.0001
 # normalize R to max values of actuators
-#R_array[3][3] = 0.00001
-#R_array[4][4] = 0.00001
 
 #R_array[controller_actuators.index('D_tot'), con#troller_actuators.index('D_tot')] = 1
 R = csr_matrix(R_array)
@@ -93,17 +91,19 @@ R = csr_matrix(R_array)
 #umin = np.array([-2/2])
 #umax = np.array([10/2])
 
-
+# ip, pinj, ech, bt, gas
 umin = np.array([-np.inf]*len(controller_actuators))
 umax = np.array([np.inf]*len(controller_actuators))
+umin = [(0-989467)/389572, (3-4.072876)/3.145593, 0e6/1e6, 1/58800, (0-0.2318070580561956)/1.6204600868125758]
+umax = [(1e7-989467)/389572, (15-4.072876)/3.145593, 3e6/1e6, 3/58800, (10-0.2318070580561956)/1.6204600868125758]
 #umin[2] = -1
 #umin[4] = 0
 xmin = np.array([-np.inf]*latent_dim)
 xmax = np.array([np.inf]*latent_dim)
 
 # set actuators that I don't want to control
-blocked_actuators = ['ip','PCBCOIL']
-
+blocked_actuators = ['gasA_voltage', 'bmspinj','bmstinj','ech_pwr_total', 'ip','PCBCOIL']
+#blocked_actuators = ['ip', 'PCBCOIL']
 for actuator in blocked_actuators:
     true_value = wanted_sample[starting_index+nwarmup, current_controller_indices[controller_actuators.index(actuator)]].clone().item()
     umin[controller_actuators.index(actuator)] = true_value
@@ -112,6 +112,7 @@ for actuator in blocked_actuators:
 #Ad = sparse.csc_matrix(linear_model.A.weight.data)
 Ad = sparse.csc_matrix(torch.diag(linear_model.A.diagonal.data))
 Bd = sparse.csc_matrix(linear_model.B.weight.data)
+#Bd = sparse.csc_matrix(torch.diag(linear_model.B.diagonal.data))
 [nx, nu] = Bd.shape
 
 q = np.hstack([np.kron(np.ones(N), -Q@(target_z_t[0,nwarmup,:])), -QN@(target_z_t[0,nwarmup,:]), np.zeros(N*nu)])
@@ -187,9 +188,11 @@ output_dict = {
 }
 
 prediction_length = end_index - starting_index - nwarmup
-# got to input the correct times here
-true_actuator_trajectory = get_ml_actuator_trajectory(x_test[shot_index:shot_index+1][starting_index:end_index], profiles, parameters, calculations, actuators, nwarmup=nwarmup, prediction_length=prediction_length) # nwarmup and full prediction actuators
-true_warmup_profiles, true_warmup_parameters = get_ml_profile_warmup(x_test[shot_index:shot_index+1][starting_index:end_index], profiles, parameters, calculations, actuators, recorded_profiles=profiles, recorded_parameters=parameters, nwarmup=nwarmup) 
+
+wanted_sample_unsqueezed = torch.unsqueeze(wanted_sample, 0).float()
+
+true_actuator_trajectory = get_ml_actuator_trajectory(wanted_sample_unsqueezed[:, starting_index:end_index, :], profiles, parameters, calculations, actuators, nwarmup=nwarmup, prediction_length=prediction_length) # nwarmup and full prediction actuators
+true_warmup_profiles, true_warmup_parameters = get_ml_profile_warmup(wanted_sample_unsqueezed[:, starting_index:end_index, :], profiles, parameters, calculations, actuators, recorded_profiles=profiles, recorded_parameters=parameters, nwarmup=nwarmup) 
 true_profiles, true_parameters = get_ml_truth(target_params, profiles, parameters, calculations, nwarmup=nwarmup, prediction_length=prediction_length) # get true state at t+1
 
 controlled_actuator_trajectory = get_ml_actuator_trajectory(simulated_state, profiles, parameters, calculations, actuators, nwarmup=nwarmup, prediction_length=prediction_length)
@@ -210,8 +213,10 @@ output_dict['controlled']['actuators'] = controlled_actuator_trajectory
 output_dict['time'] = np.arange(len(true_actuator_trajectory[0,0,:]))*20
 
 import pickle
-with open(f'control_pickles/{lstm_model_name}{linear_model_name}{shot_index}.pkl', 'wb') as file:
+dir = f'control_pickles/{lstm_model_name}{linear_model_name}{shot_index}.pkl'
+with open(dir, 'wb') as file:
     # Pickle the array and write it to the file
+    print(f'dumping to {dir}')
     pickle.dump(output_dict, file)
 
 '''controlled_dict = customDatasetMakers.state_to_dic(controlled_state, profiles, parameters, actuators=actuators)
