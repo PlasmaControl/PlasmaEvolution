@@ -294,9 +294,12 @@ for epoch in range(start_epoch, n_epochs):
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
     print(f'Modelling loss: {(avg_train_losses[-1] - avg_controllability_losses[-1] - avg_inverting_losses[-1] - avg_future_inverting_losses[-1]):0.2e}')
-    print(f'Controllability loss: {avg_controllability_losses[-1]:0.2e} or {(avg_controllability_losses[-1]/controllability_weight):0.2e}')
-    print(f'Inverting loss: {avg_inverting_losses[-1]:0.2e} or {avg_inverting_losses[-1]/inverting_weight:0.2e}')
-    print(f'Future inverting loss: {avg_future_inverting_losses[-1]:0.2e} or {avg_future_inverting_losses[-1]/future_inverting_weight:0.2e}')
+    if controllability_weight!=0:
+        print(f'Controllability loss: {avg_controllability_losses[-1]:0.2e} or {(avg_controllability_losses[-1]/controllability_weight):0.2e}')
+    if inverting_weight!=0:
+        print(f'Inverting loss: {avg_inverting_losses[-1]:0.2e} or {avg_inverting_losses[-1]/inverting_weight:0.2e}')
+    if future_inverting_weight!=0:
+        print(f'Future inverting loss: {avg_future_inverting_losses[-1]:0.2e} or {avg_future_inverting_losses[-1]/future_inverting_weight:0.2e}')
     # the task gets harder for curriculum learning during the ramp
     # before the ramp, consider only the best model so far
     if autoregression_num_steps<=1 or epoch<=autoregression_start_epoch:
