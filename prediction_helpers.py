@@ -8,12 +8,13 @@ from train_helpers import make_bucket
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 import re
 import glob
-from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRANDiag
+
+from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRAN_nondiag, HiroLRANDiag, HiroLRANInverse
 from dataSettings import get_denormalized_dic,normalizations
 from customDatasetMakers import state_to_dic, dic_to_state
 import time
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRANDiag': HiroLRANDiag}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRAN_nondiag': HiroLRAN_nondiag, 'HiroLRANDiag': HiroLRANDiag, 'HiroLRANInverse': HiroLRANInverse}
 
 MAX_NUMBER_OF_TIMES=300
 
@@ -105,6 +106,8 @@ def get_ml_predictions(x_test, y_test,
     prev_time=begin_time
     evaluation_begin_time=time.time()
     prev_time=evaluation_begin_time
+    model=considered_models[0]
+    model.eval()
     with torch.no_grad():
         sample_ind=0
         for which_bucket in range(len(test_x_buckets)):
@@ -120,10 +123,8 @@ def get_ml_predictions(x_test, y_test,
             # since the ethos should be considering different ML and sim
             # models on equal footing
             model_output=torch.zeros_like(padded_y)
-            for model in considered_models:
                 #model=considered_models[0]
-                model_output+=model(padded_x, reset_probability=0, nwarmup=nwarmup)
-            model_output/=len(considered_models)
+            model_output = model(padded_x, reset_probability=0, nwarmup=nwarmup)
             unpadded_output=unpad_sequence(model_output, length_bucket, batch_first=True)
             for which_output,output in enumerate(unpadded_output):
                 output_dic=state_to_dic(output, profiles, parameters)
@@ -152,6 +153,7 @@ def get_ml_profiles_with_warmup(profiles, warmup_ups):
 
 # get the predicted profiles at t+1 given the full history, outputs are normalized
 def get_fast_profile_prediction(x_test_sample, model):
+    model.eval()
     with torch.no_grad():
         model_output = model(x_test_sample, reset_probability=1)
     return model_output[:,-1:, :]
