@@ -59,6 +59,6 @@ else:
     train_shots=[shot for shot in range(min_shot,max_shot) if shot%10 not in [val_index,test_index]]
     val_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in [val_index]]
     test_shots=[shot for shot in range(min_shot,max_shot) if shot%10 in [test_index]]
-    train_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'train.pkl',shots=train_shots,**datasetParams)
     val_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'val.pkl',shots=val_shots,**datasetParams)
     test_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'test.pkl',shots=test_shots,**datasetParams)
+    train_dataset=customDatasetMakers.preprocess_data(preprocessed_data_filenamebase+'train.pkl',shots=train_shots,**datasetParams)
