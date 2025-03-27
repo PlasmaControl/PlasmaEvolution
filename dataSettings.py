@@ -114,7 +114,7 @@ normalizations={
     'P_AUXILIARY': {'mean': 0, 'std': 2e3},       # custom signals,
     'zeff_rho': {'mean': 0, 'std': 2}, # defined in customDatasetMakers ad hoc
     'p' : {'mean': 0, 'std': 100},
-    'qinv': {'mean': 0, 'std': 1},
+    'qinv': {'mean': 0, 'std': 10},
     '1/q': {'mean': 0, 'std': 1},
     'j': {'mean': 0, 'std': 1},
     'ne': {'mean': 0, 'std': 10},
@@ -175,7 +175,7 @@ pcs_normalizations={
     'P_AUXILIARY': {'mean': 0, 'std': 2e3},       # custom signals,
     'zeff_rho': {'mean': 0, 'std': 2}, # defined in customDatasetMakers ad hoc
     'p' : {'mean': 0, 'std': 100},
-    'qinv': {'mean': 0, 'std': 1},
+    'qinv': {'mean': 0, 'std': 100},
     '1/q': {'mean': 0, 'std': 1},
     'j': {'mean': 0, 'std': 1},
     'ne': {'mean': 0, 'std': 10},
