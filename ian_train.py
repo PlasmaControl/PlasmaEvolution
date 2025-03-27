@@ -1,9 +1,9 @@
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset, get_state_indices_dic
-from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRANDiag, HiroLRANReLU
+from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRAN_nondiag, HiroLRANDiag, HiroLRANInverse
 from train_helpers import make_bucket, \
-    get_state_mask, get_sample_time_state_mask, masked_loss
+    get_state_mask, get_sample_time_state_mask, masked_loss, get_controllability
 
 from dataSettings import nx
 
@@ -13,7 +13,7 @@ import sys
 import shutil
 import time
 
-models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRANDiag': HiroLRANDiag, 'HiroLRANReLU': HiroLRANReLU}
+models={'IanRNN': IanRNN, 'IanMLP': IanMLP, 'HiroLRAN': HiroLRAN, 'HiroLRAN_nondiag': HiroLRAN_nondiag,'HiroLRANDiag': HiroLRANDiag, 'HiroLRANInverse': HiroLRANInverse}
 
 if (len(sys.argv)-1) > 0:
     config_filename=sys.argv[1]
@@ -36,8 +36,11 @@ l1_lambda=config['optimization'].getfloat('l1_lambda')
 l2_lambda=config['optimization'].getfloat('l2_lambda')
 var_lambda=config['optimization'].getfloat('var_lambda')
 pcs_normalize=config['optimization'].getboolean('pcs_normalize',False)
+fast_training=config['optimization'].getboolean('fast_training',False)
 inverting_weight=config['optimization'].getfloat('inverting_weight')
+future_inverting_weight=config['optimization'].getfloat('future_inverting_weight')
 latent_loss_weight=config['optimization'].getfloat('latent_loss_weight')
+controllability_weight=config['optimization'].getfloat('controllability_weight')
 profiles=config['inputs']['profiles'].split()
 actuators=config['inputs']['actuators'].split()
 parameters=config['inputs'].get('parameters','').split()
@@ -94,7 +97,7 @@ if tune_model:
             for param in child.parameters():
                 param.requires_grad = False
 
-min_sample_length=max(2*nwarmup,6)
+min_sample_length=max(2*nwarmup,20)
 train_filename=preprocessed_data_filenamebase+'train.pkl'
 print(f'Organizing train data from {train_filename}')
 start_time=time.time()
@@ -102,6 +105,14 @@ x_train, y_train, shots, times = ian_dataset(train_filename,
                                              profiles,parameters,calculations,actuators,
                                              sort_by_size=True, min_sample_length=min_sample_length,
                                              use_fancy_normalization=use_fancy_normalization, pcs_normalize=pcs_normalize)
+# shrink training set to 1/10th of the size for faster training
+if fast_training:
+    x_train=x_train[:int(len(x_train)/10)]
+    y_train=y_train[:int(len(y_train)/10)]
+    shots=shots[:int(len(shots)/10)]
+    times=times[:int(len(times)/10)]
+    print(f'...fast training, using {len(x_train)} samples')
+
 print(f'...took {(time.time()-start_time):0.2f}s')
 val_filename=preprocessed_data_filenamebase+'val.pkl'
 print(f'Organizing validation data from {val_filename}')
@@ -159,6 +170,9 @@ if tune_model and resume_training:
     avg_val_losses=saved_state['val_losses']
 else:
     avg_train_losses=[]
+    avg_controllability_losses=[]
+    avg_inverting_losses=[]
+    avg_future_inverting_losses=[]
     avg_val_losses=[]
 for epoch in range(start_epoch, n_epochs):
     if autoregression_num_steps<=1 or epoch<autoregression_start_epoch:
@@ -174,8 +188,12 @@ for epoch in range(start_epoch, n_epochs):
             avg_steps=(y2-y1)/(x2-x1) * (epoch-x1) + y1
         reset_probability=1./avg_steps
         print(f'Autoregression on, average timestep {avg_steps:0.1f}')
+    
     model.train()
     train_losses=[]
+    controllability_losses=[]
+    inverting_losses=[]
+    future_inverting_losses=[]
     for which_bucket in torch.randperm(len(train_x_buckets)):
         random_order=torch.randperm(len(train_x_buckets[which_bucket]))
         x_bucket=[train_x_buckets[which_bucket][i] for i in random_order]
@@ -192,47 +210,68 @@ for epoch in range(start_epoch, n_epochs):
         model_output=model_output.to(device)
         mask=get_sample_time_state_mask(state_mask, model_output.size(), length_bucket, nwarmup)
         mask=mask.to(device)
+
         train_loss=masked_loss(loss_fn,
-                               model_output, padded_y,
-                               mask)
+                                model_output, padded_y,
+                                mask)
         # L1 regularization
-        l1_reg = torch.tensor(0.0, device=device)
-        for name, param in model.named_parameters():
-            if 'B.weight' in name or 'A.weight' in name:
-                l1_reg += torch.norm(param, 1)
-        train_loss += l1_lambda*l1_reg # lambda is the hyperparameter defined in cfg
+        if l1_lambda!=0:
+            l1_reg = torch.tensor(0.0, device=device)
+            for name, param in model.named_parameters():
+                if 'B.weight' in name or 'A.weight' in name:
+                    l1_reg += torch.norm(param, 1)
+            train_loss += l1_lambda*l1_reg # lambda is the hyperparameter defined in cfg
 
-        '''        if (model_type=='HiroLRAN' or model_type=='HiroLRANDiag' and var_lambda!=0):
-            latent_output = model.encoder(padded_x[:,:,:state_length])
-            target_variance = 0  # Target variance for the latent space
-            # Compute the variance along the latent_index dimension (dim=-1)
-            latent_var = torch.var(latent_output, dim=-1)  # Variance per (batch, time) pair
-    
-            # Regularization term: penalize deviation from target variance
-            reg_loss = torch.mean((latent_var - target_variance) ** 2)
+        if (model_type=='HiroLRAN' or model_type=='HiroLRAN_nondiag' and inverting_weight!=0):
 
-            train_loss += var_lambda * reg_loss
-            '''
-
-        '''# L2 regularization
-        l2_reg = torch.tensor(0.0, device=device)
-        for param in model.parameters():
-            l2_reg += torch.norm(param, p=2).sum()
-        train_loss += l2_lambda * l2_reg'''
-        if (model_type=='HiroLRAN' and inverting_weight!=0):
+            # get loss from inverting the model
             padded_x_hat = model.encode_decode(padded_x)
             inverting_loss = masked_loss(loss_fn, padded_x[:,:,:state_length], padded_x_hat, mask)
+            
             train_loss += inverting_weight * inverting_loss
+            inverting_losses.append((inverting_weight*inverting_loss).item())
 
-        if (model_type=='HiroLRAN' and latent_loss_weight!=0):
+            # get loss from inverting the model across 10 timesteps
+        if (model_type=='HiroLRAN' or model_type=='HiroLRAN_nondiag' and future_inverting_weight!=0):
+            if padded_x.shape[-2]>20:
+                future_inverting_loss_list=[]
+                for i in range(1, 11): # make sure we're invertible for all 10 timesteps
+                    padded_x_10_linear = model.new_get_linear_x_n(padded_x, i) # CHECK THIS
+                    padded_x_10_nonlinear = model.new_get_nonlinear_x_n(padded_x, i) # CHECK THIS
+                    future_inverting_loss_list.append(masked_loss(loss_fn, padded_x_10_linear[:,:,:state_length], padded_x_10_nonlinear[:,:,:state_length], mask[:,:-i, :]))
+                future_inverting_loss = sum(future_inverting_loss_list) / len(future_inverting_loss_list)
+                train_loss += future_inverting_weight * future_inverting_loss
+                future_inverting_losses.append((future_inverting_weight*future_inverting_loss).item())
+
+        if ((model_type=='HiroLRAN' or model_type=='HiroLRANDiag') and latent_loss_weight!=0):
             latent_loss = model.latent_loss() # need to put a proper function here!
             train_loss += latent_loss_weight * latent_loss
+
+        if controllability_weight!=0:
+            controllability_loss = controllability_weight / get_controllability(model_type, model)
+            
+            train_loss += controllability_loss # we want to maximize controllability, so we minimize the inverse
+            controllability_losses.append(controllability_loss.item())
+
         # Backpropagation
         train_loss.backward()
         optimizer.step()
         train_losses.append(train_loss.item())
+        
     #scheduler.step()
     avg_train_losses.append(sum(train_losses)/len(train_losses)) # now divide by total number of samples to get mean over steps/batches
+    if len(controllability_losses)>0:
+        avg_controllability_losses.append(sum(controllability_losses)/len(controllability_losses))
+    else:
+        avg_controllability_losses.append(0)
+    if len(inverting_losses)>0:
+        avg_inverting_losses.append(sum(inverting_losses)/len(inverting_losses))
+    else:
+        avg_inverting_losses.append(0)
+    if len(future_inverting_losses)>0:
+        avg_future_inverting_losses.append(sum(future_inverting_losses)/len(future_inverting_losses))
+    else:
+        avg_future_inverting_losses.append(0)
     model.eval()
     val_losses=[]
     with torch.no_grad():
@@ -254,6 +293,10 @@ for epoch in range(start_epoch, n_epochs):
             val_losses.append(val_loss.item())
         avg_val_losses.append(sum(val_losses)/len(val_losses))
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
+    print(f'Modelling loss: {(avg_train_losses[-1] - avg_controllability_losses[-1] - avg_inverting_losses[-1] - avg_future_inverting_losses[-1]):0.2e}')
+    print(f'Controllability loss: {avg_controllability_losses[-1]:0.2e} or {(avg_controllability_losses[-1]/controllability_weight):0.2e}')
+    print(f'Inverting loss: {avg_inverting_losses[-1]:0.2e} or {avg_inverting_losses[-1]/inverting_weight:0.2e}')
+    print(f'Future inverting loss: {avg_future_inverting_losses[-1]:0.2e} or {avg_future_inverting_losses[-1]/future_inverting_weight:0.2e}')
     # the task gets harder for curriculum learning during the ramp
     # before the ramp, consider only the best model so far
     if autoregression_num_steps<=1 or epoch<=autoregression_start_epoch:
@@ -279,6 +322,9 @@ for epoch in range(start_epoch, n_epochs):
             'optimizer_state_dict': optimizer.state_dict(),
             #'scheduler_state_dict': scheduler.state_dict(),
             'train_losses': avg_train_losses,
+            'controllability_losses': avg_controllability_losses,
+            'inverting_losses': avg_inverting_losses,
+            'future_inverting_losses': avg_future_inverting_losses,
             'val_losses': avg_val_losses,
             'profiles': profiles,
             'parameters': parameters,
