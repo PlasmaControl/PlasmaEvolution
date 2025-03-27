@@ -115,38 +115,38 @@ class InverseLeakyReLU(torch.nn.Module):
         return torch.where(x < 0, x / self.slope, x)
 
 class InverseLinear(torch.nn.Module):
-    def __init__(self, linear_layer):
+    def __init__(self, linear_layer, eps=1e-6):
         super(InverseLinear, self).__init__()
-
-        # Access the weight matrix and biases
-        weight_matrix = linear_layer.weight.data
-        biases = linear_layer.bias.data if linear_layer.bias is not None else None
-
-        # Check if the weight matrix is invertible
-        if torch.det(weight_matrix) == 0:
-            raise ValueError("The weight matrix is not invertible.")
-
-        # Compute the inverse
-        inverse_matrix = torch.inverse(weight_matrix)
-
-        # Create a parameter for the inverse matrix
-        self.inverse_matrix = torch.nn.Parameter(inverse_matrix, requires_grad=False)
-
-        # Create a parameter for the biases (if they exist)
-        if biases is not None:
-            self.biases = torch.nn.Parameter(biases, requires_grad=False)
+        # Instead of storing a fixed inverse, keep a reference to the original layer.
+        self.linear_layer = linear_layer
+        self.eps = eps
 
     def forward(self, x):
-        # Apply the inverse transformation
-        if torch.cuda.is_available():
-            x=x.to('cuda') # fixes issue of tensors being in CPU and cuda when autoregressively training
-        result = torch.matmul(x, self.inverse_matrix.t())  # Transpose for proper matrix multiplication
+        # Get current weight matrix and bias from the linear layer.
+        weight_matrix = self.linear_layer.weight
+        biases = self.linear_layer.bias if self.linear_layer.bias is not None else None
 
-        # Add biases if they exist
-        if hasattr(self, 'biases'):
-            result -= self.biases
+        # Create an identity matrix and add a small damping term for stability.
+        eye = torch.eye(weight_matrix.size(0), device=weight_matrix.device)
+        weight_matrix_reg = weight_matrix + self.eps * eye
 
+        # Try to compute the inverse; if it fails (e.g. singular matrix), use pseudoinverse.
+        try:
+            inverse_matrix = torch.inverse(weight_matrix_reg)
+        except RuntimeError as e:
+            print("Warning: Matrix inversion failed; using pseudoinverse instead.", e)
+            inverse_matrix = torch.linalg.pinv(weight_matrix_reg)
+        
+        # Subtract biases before applying the inverse transformation.
+        if biases is not None:
+            x = x - biases
+        
+        # Multiply by the (transpose of the) inverse matrix.
+        result = torch.matmul(x, inverse_matrix.t())
         return result
+
+
+
 
 '''class DiagonalLinear(torch.nn.Module):
     def __init__(self, latent_dim):
@@ -162,13 +162,11 @@ class InverseLinear(torch.nn.Module):
 class DiagonalLinear(torch.nn.Module):
     def __init__(self, latent_dim):
         super(DiagonalLinear, self).__init__()
-        # Create a learnable vector of diagonal elements
-        #self.diagonal = torch.nn.Parameter(torch.randn(latent_dim))
-        #self.diagonal = torch.nn.Parameter(torch.rand((latent_dim,)) - 0.5)
-        self.diagonal = torch.nn.Parameter(torch.ones(latent_dim) - 0.8)
+        # Create a learnable vector of random diagonal elements between -0.8 and 0.8
+        self.diagonal = torch.nn.Parameter(((2*torch.rand(latent_dim))-1) * 0.8)
     def forward(self, x):
         # Clamp the diagonal values to be between -0.5 and 0.5
-        clamped_diagonal = torch.clamp(self.diagonal, min=-0.7, max=0.7)
+        clamped_diagonal = torch.clamp(self.diagonal, min=-0.95, max=0.95)
         
         # Construct the diagonal matrix from the clamped vector
         A_diag = torch.diag(clamped_diagonal)
@@ -219,10 +217,11 @@ class HiroLRANDiag(torch.nn.Module):
         #    torch.nn.init.eye_(self.encoder[i][0].weight)
         self.batch_norm = torch.nn.BatchNorm1d(latent_dim)
         # linear A and B matrices
-        self.A = DiagonalLinear(latent_dim)
+        #self.A = DiagonalLinear(latent_dim)
+        self.A = torch.nn.Linear(latent_dim, latent_dim, bias=False)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
-        self.B = torch.nn.Linear(actuator_length, latent_dim, bias=False)
-        #self.B = DiagonalLinear(latent_dim)
+        #self.B = torch.nn.Linear(actuator_length, latent_dim, bias=False)
+        self.B = DiagonalLinear(latent_dim)
         # Create the encoder as a single Sequential list
         self.decoder = torch.nn.Sequential()
 
@@ -295,6 +294,27 @@ class HiroLRANDiag(torch.nn.Module):
         z_t = self.encoder(x_t)
         x_t_hat = self.decoder(z_t)
         return x_t_hat
+    
+    def get_linear_x_n(self, padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:,:state_dim]
+        actuators_trajectory = padded_input[:,:,state_dim+actuator_length:]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            z_n = self.A(z_n) + self.B(actuators_trajectory)
+        return self.decoder(z_n)
+
+    def get_nonlinear_x_n(self, padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:,:state_dim]
+        actuators_trajectory = padded_input[:,:,state_dim+actuator_length:]
+        for i in range(timesteps):
+            z_0 = self.encoder(x_0)
+            z_n = self.A(z_0) + self.B(actuators_trajectory)
+            x_0 = self.decoder(z_n)
+        return x_0
 
 class HiroLRAN(torch.nn.Module):
     def __init__(self, input_dim, output_dim, latent_dim,encoder_dim,
@@ -307,11 +327,8 @@ class HiroLRAN(torch.nn.Module):
         self.latent_dim = latent_dim
         self.output_dim = output_dim
         state_dim = output_dim
-        # see if this fixes issue with model.to(device) not sending all layers to cuda
-        self.ReLU = torch.nn.ReLU()
 
-        # Define LeakyReLU activation
-        self.ReLU = torch.nn.ReLU()
+        self.ReLU = torch.nn.Tanh()
 
         # Create the encoder as a single Sequential list
         self.encoder = torch.nn.Sequential()
@@ -337,7 +354,7 @@ class HiroLRAN(torch.nn.Module):
         # Initialize the encoding linear layers with identity matrices
         #for i in range(encoder_extra_layers+1):
         #    torch.nn.init.eye_(self.encoder[i][0].weight)
-        self.batch_norm = torch.nn.BatchNorm1d(latent_dim)
+        #self.batch_norm = torch.nn.BatchNorm1d(latent_dim)
         # linear A and B matrices
         self.A = DiagonalLinear(latent_dim)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
@@ -352,7 +369,7 @@ class HiroLRAN(torch.nn.Module):
             self.ReLU
         ))
 
-        # Add extra layers with LeakyReLU
+        # Add extra layers with ReLU
         for i in range(encoder_extra_layers):
             self.decoder.add_module(f'decoding_extra_layer_{i}', torch.nn.Sequential(
                 torch.nn.Linear(encoder_dim, encoder_dim),
@@ -372,13 +389,13 @@ class HiroLRAN(torch.nn.Module):
         u_t = padded_input[:, :, state_dim:state_dim+actuator_length]
         u_t1 = padded_input[:, :, state_dim+actuator_length:]
         z_t = self.encoder(x_t)
-        z_t = z_t.permute(0, 2, 1)
+        #z_t = z_t.permute(0, 2, 1)
 
         # Apply batch normalization
-        z_t = self.batch_norm(z_t)
+        #z_t = self.batch_norm(z_t)
 
         # Permute back to original shape (batch_size, seq_len, latent_dim)
-        z_t = z_t.permute(0, 2, 1)
+        #z_t = z_t.permute(0, 2, 1)
         # inference without autoregression (20x faster)
         if reset_probability>=1:
             z_t1=self.A(z_t) + self.B(u_t1)
@@ -415,9 +432,52 @@ class HiroLRAN(torch.nn.Module):
         z_t = self.encoder(x_t)
         x_t_hat = self.decoder(z_t)
         return x_t_hat
+    def get_linear_x_n(self, padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        actuators_trajectory = padded_input[:,:,state_dim+actuator_length:]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            z_n = self.A(z_n) + self.B(actuators_trajectory[:, i:-timesteps+i, :])
+        return self.decoder(z_n)
 
-class HiroLRANReLU(torch.nn.Module):
+    def get_nonlinear_x_n(self, padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        actuators_trajectory = padded_input[:,:,state_dim+actuator_length:]
+        for i in range(timesteps):
+            z_0 = self.encoder(x_0)
+            z_n = self.A(z_0) + self.B(actuators_trajectory[:, i:-timesteps+i, :])
+            x_0 = self.decoder(z_n)
+        return x_0
+    def new_get_linear_x_n(self, padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            actuators_trajectory = padded_input[:,i:-timesteps+i,state_dim+actuator_length:]
+            z_n = self.A(z_n) + self.B(actuators_trajectory)
+        return self.decoder(z_n)
+
+    def new_get_nonlinear_x_n(self,padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            actuators_trajectory = padded_input[:,i:-timesteps+i,state_dim+actuator_length:]
+            z_n = self.A(z_n) + self.B(actuators_trajectory)
+            z_n = self.encoder(self.decoder(z_n))
+        return self.decoder(z_n)
+
+    
+
+class HiroLRAN_nondiag(torch.nn.Module):
     def __init__(self, input_dim, output_dim, latent_dim,encoder_dim,
+                 negative_slope=0.01,
                  encoder_extra_layers=1
                  ):
         super().__init__()
@@ -426,8 +486,9 @@ class HiroLRANReLU(torch.nn.Module):
         self.latent_dim = latent_dim
         self.output_dim = output_dim
         state_dim = output_dim
-        # see if this fixes issue with model.to(device) not sending all layers to cuda
-        self.ReLU = torch.nn.ReLU()
+
+        self.ReLU = torch.nn.Tanh()
+
         # Create the encoder as a single Sequential list
         self.encoder = torch.nn.Sequential()
 
@@ -452,9 +513,9 @@ class HiroLRANReLU(torch.nn.Module):
         # Initialize the encoding linear layers with identity matrices
         #for i in range(encoder_extra_layers+1):
         #    torch.nn.init.eye_(self.encoder[i][0].weight)
-        self.batch_norm = torch.nn.BatchNorm1d(latent_dim)
+        #self.batch_norm = torch.nn.BatchNorm1d(latent_dim)
         # linear A and B matrices
-        self.A = DiagonalLinear(latent_dim)
+        self.A = torch.nn.Linear(latent_dim, latent_dim, bias=False)
         actuator_length = (input_dim - state_dim) // 2 # divide by 2 cuz input has u_t and u_t+1
         self.B = torch.nn.Linear(actuator_length, latent_dim, bias=False)
         
@@ -467,7 +528,7 @@ class HiroLRANReLU(torch.nn.Module):
             self.ReLU
         ))
 
-        # Add extra layers with LeakyReLU
+        # Add extra layers with ReLU
         for i in range(encoder_extra_layers):
             self.decoder.add_module(f'decoding_extra_layer_{i}', torch.nn.Sequential(
                 torch.nn.Linear(encoder_dim, encoder_dim),
@@ -487,13 +548,13 @@ class HiroLRANReLU(torch.nn.Module):
         u_t = padded_input[:, :, state_dim:state_dim+actuator_length]
         u_t1 = padded_input[:, :, state_dim+actuator_length:]
         z_t = self.encoder(x_t)
-        z_t = z_t.permute(0, 2, 1)
+        #z_t = z_t.permute(0, 2, 1)
 
         # Apply batch normalization
-        z_t = self.batch_norm(z_t)
+        #z_t = self.batch_norm(z_t)
 
         # Permute back to original shape (batch_size, seq_len, latent_dim)
-        z_t = z_t.permute(0, 2, 1)
+        #z_t = z_t.permute(0, 2, 1)
         # inference without autoregression (20x faster)
         if reset_probability>=1:
             z_t1=self.A(z_t) + self.B(u_t1)
@@ -527,6 +588,150 @@ class HiroLRANReLU(torch.nn.Module):
         state_dim = self.output_dim
         x_t = padded_input[:, :, :state_dim]
         u_t = padded_input[:,:, state_dim:]
+        z_t = self.encoder(x_t)
+        x_t_hat = self.decoder(z_t)
+        return x_t_hat
+    
+    def new_get_linear_x_n(self, padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            actuators_trajectory = padded_input[:,i:-timesteps+i,state_dim+actuator_length:]
+            z_n = self.A(z_n) + self.B(actuators_trajectory)
+        return self.decoder(z_n)
+
+    def new_get_nonlinear_x_n(self,padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            actuators_trajectory = padded_input[:,i:-timesteps+i,state_dim+actuator_length:]
+            z_n = self.A(z_n) + self.B(actuators_trajectory)
+            z_n = self.encoder(self.decoder(z_n))
+        return self.decoder(z_n)
+    
+import torch.nn as nn
+
+def init_invertible_linear(module, noise_std=1e-3):
+    """Initialize a square linear layer to be near-identity."""
+    if isinstance(module, nn.Linear):
+        if module.in_features != module.out_features:
+            raise ValueError("For invertibility, the linear layer must be square.")
+        # Initialize weight as an identity plus a small noise perturbation
+        with torch.no_grad():
+            identity = torch.eye(module.in_features, device=module.weight.device)
+            noise = noise_std * torch.randn_like(module.weight)
+            module.weight.copy_(identity + noise)
+            if module.bias is not None:
+                module.bias.zero_()
+
+class HiroLRANInverse(nn.Module):
+    def __init__(self, input_dim, output_dim,
+                 negative_slope=0.1,
+                 encoder_extra_layers=1):
+        """
+        For invertibility, we enforce:
+           latent_dim = encoder_dim = output_dim (i.e. state_dim)
+        """
+        super().__init__()
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        # To ensure invertibility, we set:
+        latent_dim = output_dim
+        encoder_dim = output_dim
+        state_dim = output_dim  # the state is the first part of the input
+
+        # Use LeakyReLU for invertibility.
+        self.activation = nn.LeakyReLU(negative_slope)
+        
+        # Build the encoder as a sequential series of blocks: [Linear, activation]
+        self.encoder = nn.Sequential()
+        self.encoder.add_module("enc_block_0", nn.Sequential(
+            nn.Linear(state_dim, encoder_dim),
+            self.activation
+        ))
+        for i in range(encoder_extra_layers):
+            self.encoder.add_module(f"enc_block_{i+1}", nn.Sequential(
+                nn.Linear(encoder_dim, encoder_dim),
+                self.activation
+            ))
+        self.encoder.add_module("enc_block_final", nn.Sequential(
+            nn.Linear(encoder_dim, latent_dim),
+            self.activation
+        ))
+        
+        # Initialize every linear layer in the encoder to be invertible.
+        self.encoder.apply(lambda m: init_invertible_linear(m, noise_std=1e-3))
+        
+        # Optional batch normalization in latent space
+        #self.batch_norm = nn.BatchNorm1d(latent_dim)
+        
+        # Latent dynamics: here we use a diagonal linear mapping for A and a standard layer for B.
+        #self.A = nn.Linear(latent_dim, latent_dim, bias=False)
+        self.A = DiagonalLinear(latent_dim)
+        actuator_length = (input_dim - state_dim) // 2  # assume input = state + u_t + u_t+1
+        self.B = nn.Linear(actuator_length, latent_dim, bias=False)
+        
+        # Build the decoder as the exact inverse of the encoder.
+        # For each encoder block, create an inverse block.
+        self.decoder = nn.Sequential()
+        encoder_blocks = list(self.encoder.children())
+        for i, block in enumerate(reversed(encoder_blocks)):
+            # Each block is [Linear, activation]. Its inverse is:
+            #   x = InverseLinear(Linear) applied after InverseActivation.
+            linear_layer = block[0]
+            inv_activation = InverseLeakyReLU(negative_slope)
+            inv_linear = InverseLinear(linear_layer)  # Uses current weights dynamically
+            self.decoder.add_module(f"dec_block_{i}", nn.Sequential(
+                inv_activation,
+                inv_linear
+            ))
+            
+    def forward(self, padded_input, reset_probability=0, nwarmup=0):
+        state_dim = self.output_dim
+        # Split out state and actuator parts.
+        x_t = padded_input[:, :, :state_dim]
+        actuator_length = (self.input_dim - state_dim) // 2
+        u_t = padded_input[:, :, state_dim: state_dim+actuator_length]
+        u_t1 = padded_input[:, :, state_dim+actuator_length:]
+        
+        # Encode the state.
+        z_t = self.encoder(x_t)
+
+        # don't batchnorm
+        #z_t = z_t.permute(0, 2, 1)
+        #z_t = self.batch_norm(z_t)
+        #z_t = z_t.permute(0, 2, 1)
+        
+        # Propagate latent state via dynamics.
+        if reset_probability >= 1:
+            z_t1 = self.A(z_t) + self.B(u_t1)
+        else:
+            seq_len = padded_input.size(1)
+            z_t1 = torch.zeros_like(z_t)
+            prev_output = z_t[:, 0, :].unsqueeze(1)
+            for t_ind in range(seq_len):
+                if (t_ind <= nwarmup) or (torch.rand(1).item() < reset_probability):
+                    this_input = z_t[:, t_ind, :].unsqueeze(1)
+                else:
+                    this_input = prev_output
+                this_output = self.A(this_input) + self.B(u_t1[:, t_ind, :].unsqueeze(1))
+                prev_output = this_output
+                z_t1[:, t_ind, :] = prev_output.squeeze(1)
+        if torch.cuda.is_available():
+            z_t1 = z_t1.to('cuda')
+            
+        # Decode the latent state.
+        x_t1 = self.decoder(z_t1)
+        return x_t1
+    
+    def encode_decode(self, padded_input):
+        state_dim = self.output_dim
+        x_t = padded_input[:, :, :state_dim]
         z_t = self.encoder(x_t)
         x_t_hat = self.decoder(z_t)
         return x_t_hat
