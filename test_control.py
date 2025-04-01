@@ -18,54 +18,107 @@ from customModels import IanRNN, HiroLRAN, HiroLRANInverse, HiroLRANDiag, HiroLR
 from train_helpers import get_state_mask, get_sample_time_state_mask, masked_loss
 from prediction_helpers import (
     get_ml_truth, get_ml_profile_warmup, get_ml_actuator_trajectory,
-    get_ml_predictions, get_considered_models, get_fast_profile_prediction
+    get_ml_predictions, get_considered_models, get_fast_profile_prediction,
+    get_control_targets_from_profiles
 )
 
 # ============================================================================
-# 1) Define the 3x3 System and Simulation Parameters
+# 1) Pick the Model and Load the Data
 # ============================================================================
 
-# load the model
-model_name = 'HiroLRAN_v23'
+# load the models
+true_model_name = 'IanRNN_v12'
+control_model = 'HiroLRAN_v'
+model_type = ''
+if 'HiroLRAN' in true_model_name:
+    model_type = 'HiroLRAN'
+elif 'IanRNN' in true_model_name:
+    model_type = 'IanRNN'
 
-config_file = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{model_name}config'
+config_file = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{true_model}config'
 config = configparser.ConfigParser()
 config.read(config_file)
 
+profiles    = config['inputs']['profiles'].split()
+actuators   = config['inputs']['actuators'].split()
+parameters  = config['inputs'].get('parameters','').split()
+calculations= config['inputs'].get('calculations','').split()
+
+linear_config_file = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{control_model}config'
+config_linear = configparser.ConfigParser()
+config_linear.read(linear_config_file)
+
+controller_actuators  = config_linear['inputs']['actuators'].split()
+controller_profiles   = config_linear['inputs']['profiles'].split()
+controller_parameters = config_linear['inputs']['parameters'].split()
+
 data_file = config['preprocess']['preprocessed_data_filenamebase'] + 'train.pkl'
 
-model   = get_considered_models(config_file, ensemble=False)[0]
+true_model   = get_considered_models(config_file, ensemble=False)[0]
+linear_model = get_considered_models(linear_config_file, ensemble=False)[0]
 
-# Highly controllable system:
-A = np.diag([0.9, 0.8, 0.7])   # 3x3 diagonal dynamics matrix
-B = np.eye(3)                  # 3x3 identity (full rank) control matrix
+x_test, y_test, shots, times = customDatasetMakers.ian_dataset(
+    data_file, profiles, parameters, calculations, actuators, sort_by_size=True
+)
 
-A = torch.diag(model.A.diagonal.data).detach().numpy()
-#A = model.A.weight.data.detach().numpy()
-B = model.B.weight.data.detach().numpy()
 
-nz = A.shape[0]   # state dimension (3)
-nu = B.shape[1]   # control dimension (3)
 
-# Initial latent state (z) and target trajectory:
-init_z = np.array([-0.6202, -0.2201, -0.8403, -0.0348, -0.1184])
-#init_z = np.ones((nz,))  # initial latent state
-T = 150  # total time steps for the target trajectory
-# For example, ramp trajectories for each state dimension:
-target_z = np.vstack([np.linspace(0, 1, T),
-                      np.linspace(0, -1, T),
-                      np.linspace(0, 0.5, T)]).T  # shape: (T, 3)
+# ============================================================================
+# 2) Set Simulation Parameters
+# ============================================================================
 
-target_z = np.ones((T, nz))  # constant target trajectory
-# target_z is just init_z copied T times
-target_z = np.tile([[-0.5861, -0.4475, -0.7799, -0.2300, -0.0227]], (T, 1))
-#target_z = np.zeros((T, nz))  # constant target trajectory
+shot_index     = 500
+version        = 4
+wanted_sample  = x_test[shot_index]
+nwarmup        = 3
+start_idx      = 100
+end_idx        = len(wanted_sample) - nwarmup
 
-# second half of target_z is init_z copied T//2 times
-target_z[T//2:] = np.tile(init_z, (T//2, 1))
-# MPC parameters:
 N    = 10    # prediction horizon
-nsim = 100   # simulation steps (nsim <= T)
+nsim = 100   # simulation steps
+
+if nsim > end_idx - start_idx - nwarmup: # can't simulate beyond the end of the data
+    nsim = end_idx - start_idx - nwarmup
+
+A = linear_model.A.weight.data.detach().numpy()
+B = linear_model.B.weight.data.detach().numpy()
+
+nz = A.shape[0]   # state dimension
+nu = B.shape[1]   # control dimension
+
+future_ctrl_idxs = [
+    n_profiles*profile_size + n_parameters + n_acts
+    + actuators.index(act) for act in controller_actuators
+]
+current_ctrl_idxs = [
+    n_profiles*profile_size + n_parameters
+    + actuators.index(act) for act in controller_actuators
+]
+
+state_idx_list = [profiles.index(p) for p in controller_profiles]
+state_indices  = [p_idx*profile_size + i for p_idx in state_idx_list for i in range(profile_size)]
+param_indices  = [n_profiles*profile_size + parameters.index(p)
+                  for p in controller_parameters]
+state_indices += param_indices
+
+# define simulation state and initial state
+sim_state = wanted_sample[start_idx:end_idx].clone().unsqueeze(0).float()
+
+init_z     = linear_model.encoder(sim_state[:, nwarmup, state_indices]).detach().numpy()
+
+manual_targets = True
+
+if manual_targets:
+    target_profiles = np.array([
+        [0.0, 0.0, 0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0, 0.0, 0.0],
+    ])
+    profile_switch_times = np.array([0, 50])
+    target_trajectory = get_control_targets_from_profiles(target_profiles, profile_switch_times, nsim)
+    target_z = linear_model.encoder(torch.tensor(target_trajectory, dtype=torch.float32)).detach().numpy().flatten()
+else:
+    # use the real data as the targets
+    target_z = linear_model.encoder(torch.tensor(wanted_sample[start_idx:start_idx+nsim, state_indices], dtype=torch.float32)).detach().numpy().flatten()
 
 nx_orig = nz  # original state dimension
 
@@ -85,7 +138,7 @@ B_aug = np.block([
 nx_aug = 2 * nx_orig  # augmented state dimension
 
 # ============================================================================
-# 3) Define the Cost and Constraints
+# 3) Define the Costs and Constraints
 # ============================================================================
 
 # Cost weights:
@@ -101,9 +154,31 @@ Q_aug = np.block([
 Q_aug_csr = csr_matrix(Q_aug)
 R_csr     = csr_matrix(R)
 
-# Control constraints: u in [-10, 10] for each actuator.
-umin = -10 * np.ones(nu)
-umax =  10 * np.ones(nu)
+# Normalized control constraints [ip, pinj, tinj, echp, PCBCOIL, gasA]: 
+umin = np.array([
+    (0 - 989467)/389572,
+    (3 - 4.072876)/3.145593,
+    (0 - 3.38)/2.70,
+    0e6/1e6,
+    1/58800,
+    (0 - 0.2318070580561956)/1.6204600868125758
+])
+umax = np.array([
+    (1e7 - 989467)/389572,
+    (15 - 4.072876)/3.145593,
+    (12 - 3.38)/2.70,
+    3e6/1e6,
+    3/58800,
+    (10 - 0.2318070580561956)/1.6204600868125758
+])
+
+# Force 'blocked_actuators' to remain uncontrolled:
+blocked_actuators = ['ip', 'PCBCOIL']
+for ba in blocked_actuators:
+    val = wanted_sample[start_idx+nwarmup, current_ctrl_idxs[controller_actuators.index(ba)]].item()
+    idx = controller_actuators.index(ba)
+    umin[idx] = val
+    umax[idx] = val
 
 # State constraints are unconstrained:
 lineq_x = np.hstack([np.full(nx_orig, -np.inf),
@@ -199,13 +274,24 @@ for i in range(nsim):
     ctrl0 = u_sol[:nu]  # extract the first control input
     u_traj.append(ctrl0)
     
+    # update simulated state with new actuation
+    sim_state[0, nwarmup + i - 1, future_ctrl_idxs] = ctrl0
+    sim_state[0, nwarmup + i, current_ctrl_idxs]    = ctrl0
+
     # Simulate one step:
-    x_next = A_aug @ x_traj[-1] + B_aug @ ctrl0
+    if model_type == 'HiroLRAN':
+        x_next = A_aug @ x_traj[-1] + B_aug @ ctrl0
+    elif model_type == 'IanRNN':
+        pred_state = get_fast_profile_prediction(sim_state[:, :nwarmup + i, :], lstm_model)
+        x_next = linear_model.encoder(torch.tensor(pred_state, dtype=torch.float32)).detach().numpy().flatten()
+        if (nwarmup + i) < len(wanted_sample):
+            sim_state[:, nwarmup + i, :n_profiles*profile_size + n_parameters] = pred_state
+
     x_traj.append(x_next)
     z_next = x_next[:nz]
 
-    true_next = model.decoder(torch.tensor(z_next.reshape(1,1,len(z_next)), dtype=torch.float32))
-    true_latent = model.encoder(true_next).detach().numpy().flatten()
+    true_next = linear_model.decoder(torch.tensor(z_next.reshape(1,1,len(z_next)), dtype=torch.float32))
+    true_latent = linear_model.encoder(true_next).detach().numpy().flatten()
 
     #true_traj.append(true_next.detach().numpy().flatten())
     true_latent_traj.append(true_latent)
@@ -250,12 +336,12 @@ for i in range(nsim):
 
 # Extract the latent state (first nz entries of each augmented state)
 controlled_latent_traj = np.array([x[:nz] for x in x_traj])
-controlled_traj = model.decoder(torch.tensor(controlled_latent_traj, dtype=torch.float32).unsqueeze(0)).detach().numpy()[0]
+controlled_traj = linear_model.decoder(torch.tensor(controlled_latent_traj, dtype=torch.float32).unsqueeze(0)).detach().numpy()[0]
 # Slice the target trajectory to match the simulation length
 target_latent_traj = target_z[:len(controlled_latent_traj)]
-target_traj = model.decoder(torch.tensor(target_latent_traj, dtype=torch.float32).unsqueeze(0)).detach().numpy()[0]
+target_traj = linear_model.decoder(torch.tensor(target_latent_traj, dtype=torch.float32).unsqueeze(0)).detach().numpy()[0]
 actuator_values = np.array(u_traj)
-true_traj = model.decoder(torch.tensor(np.array(true_latent_traj), dtype=torch.float32).unsqueeze(0)).detach().numpy()[0]
+true_traj = linear_model.decoder(torch.tensor(np.array(true_latent_traj), dtype=torch.float32).unsqueeze(0)).detach().numpy()[0]
 true_latent_traj = np.array(true_latent_traj)
 
 output_dict = {
