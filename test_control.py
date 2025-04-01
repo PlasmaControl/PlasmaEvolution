@@ -27,15 +27,16 @@ from prediction_helpers import (
 # ============================================================================
 
 # load the models
-true_model_name = 'IanRNN_v12'
-control_model = 'HiroLRAN_v'
+#true_model_name = 'IanRNN_v12'
+true_model_name = 'HiroLRAN_v35'
+control_model_name = 'HiroLRAN_v35'
 model_type = ''
 if 'HiroLRAN' in true_model_name:
     model_type = 'HiroLRAN'
 elif 'IanRNN' in true_model_name:
     model_type = 'IanRNN'
 
-config_file = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{true_model}config'
+config_file = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{true_model_name}config'
 config = configparser.ConfigParser()
 config.read(config_file)
 
@@ -44,7 +45,7 @@ actuators   = config['inputs']['actuators'].split()
 parameters  = config['inputs'].get('parameters','').split()
 calculations= config['inputs'].get('calculations','').split()
 
-linear_config_file = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{control_model}config'
+linear_config_file = f'/projects/EKOLEMEN/profile_predictor/joe_hiro_models/{control_model_name}config'
 config_linear = configparser.ConfigParser()
 config_linear.read(linear_config_file)
 
@@ -62,13 +63,12 @@ x_test, y_test, shots, times = customDatasetMakers.ian_dataset(
 )
 
 
-
 # ============================================================================
 # 2) Set Simulation Parameters
 # ============================================================================
 
-shot_index     = 500
-version        = 4
+shot_index     = 8
+version        = 0
 wanted_sample  = x_test[shot_index]
 nwarmup        = 3
 start_idx      = 100
@@ -79,6 +79,12 @@ nsim = 100   # simulation steps
 
 if nsim > end_idx - start_idx - nwarmup: # can't simulate beyond the end of the data
     nsim = end_idx - start_idx - nwarmup
+
+# Calculate index offsets for the state vector
+n_profiles   = len(profiles)
+n_parameters = len(parameters)
+n_acts       = len(actuators)
+profile_size = 33  # number of radial points per profile
 
 A = linear_model.A.weight.data.detach().numpy()
 B = linear_model.B.weight.data.detach().numpy()
@@ -103,22 +109,27 @@ state_indices += param_indices
 
 # define simulation state and initial state
 sim_state = wanted_sample[start_idx:end_idx].clone().unsqueeze(0).float()
-
-init_z     = linear_model.encoder(sim_state[:, nwarmup, state_indices]).detach().numpy()
+init_z     = linear_model.encoder(sim_state[0, nwarmup, state_indices]).detach().numpy()
 
 manual_targets = True
 
 if manual_targets:
     target_profiles = np.array([
-        [0.0, 0.0, 0.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0, 0.0, 0.0],
+        [0.5528, 0.5472, 0.5358, 0.5259, 0.5093, 0.4922, 0.4813, 0.4738, 0.4644,
+        0.4557, 0.4482, 0.4438, 0.4372, 0.4273, 0.4196, 0.4150, 0.4116, 0.4071,
+        0.4005, 0.3912, 0.3820, 0.3712, 0.3587, 0.3451, 0.3294, 0.3178, 0.3096,
+        0.3042, 0.2959, 0.2740, 0.2544, 0.2450, 0.2138],
+        [0.2681, 0.2624, 0.2590, 0.2585, 0.2594, 0.2592, 0.2591, 0.2578, 0.2550,
+        0.2529, 0.2525, 0.2522, 0.2506, 0.2472, 0.2409, 0.2345, 0.2291, 0.2199,
+        0.2087, 0.2009, 0.1953, 0.1894, 0.1859, 0.1836, 0.1790, 0.1749, 0.1683,
+        0.1556, 0.1501, 0.1408, 0.1326, 0.1304, 0.1145],
     ])
     profile_switch_times = np.array([0, 50])
     target_trajectory = get_control_targets_from_profiles(target_profiles, profile_switch_times, nsim)
-    target_z = linear_model.encoder(torch.tensor(target_trajectory, dtype=torch.float32)).detach().numpy().flatten()
+    target_z = linear_model.encoder(torch.tensor(target_trajectory, dtype=torch.float32)).detach().numpy()
 else:
     # use the real data as the targets
-    target_z = linear_model.encoder(torch.tensor(wanted_sample[start_idx:start_idx+nsim, state_indices], dtype=torch.float32)).detach().numpy().flatten()
+    target_z = linear_model.encoder(torch.tensor(wanted_sample[start_idx:start_idx+nsim, state_indices], dtype=torch.float32)).detach().numpy()
 
 nx_orig = nz  # original state dimension
 
@@ -143,7 +154,7 @@ nx_aug = 2 * nx_orig  # augmented state dimension
 
 # Cost weights:
 Q   = 1 * np.eye(nz)       # cost on the state error (z)
-Q_e = 0.1 * np.eye(nz)       # cost on the integral error (e)
+Q_e = 0 * np.eye(nz)       # cost on the integral error (e)
 R   = 0.001 * np.eye(nu)             # cost on the control input
 
 # Build the augmented cost matrix:
@@ -274,32 +285,57 @@ for i in range(nsim):
     ctrl0 = u_sol[:nu]  # extract the first control input
     u_traj.append(ctrl0)
     
-    # update simulated state with new actuation
-    sim_state[0, nwarmup + i - 1, future_ctrl_idxs] = ctrl0
-    sim_state[0, nwarmup + i, current_ctrl_idxs]    = ctrl0
-
     # Simulate one step:
     if model_type == 'HiroLRAN':
         x_next = A_aug @ x_traj[-1] + B_aug @ ctrl0
     elif model_type == 'IanRNN':
-        pred_state = get_fast_profile_prediction(sim_state[:, :nwarmup + i, :], lstm_model)
-        x_next = linear_model.encoder(torch.tensor(pred_state, dtype=torch.float32)).detach().numpy().flatten()
+        # update simulated state with new actuation
+        sim_state[0, nwarmup + i - 1, future_ctrl_idxs] = torch.tensor(ctrl0, dtype=torch.float32)
+        sim_state[0, nwarmup + i, current_ctrl_idxs]    = torch.tensor(ctrl0, dtype=torch.float32)
+
+        pred_state = get_fast_profile_prediction(sim_state[:, :nwarmup + i, :], true_model)
+        x_next = linear_model.encoder(pred_state[:,:,state_indices]).detach().numpy()[0,0,:]
+        x_next = np.concatenate([x_next, np.zeros(nx_orig)])
         if (nwarmup + i) < len(wanted_sample):
             sim_state[:, nwarmup + i, :n_profiles*profile_size + n_parameters] = pred_state
 
     x_traj.append(x_next)
     z_next = x_next[:nz]
 
-    true_next = linear_model.decoder(torch.tensor(z_next.reshape(1,1,len(z_next)), dtype=torch.float32))
-    true_latent = linear_model.encoder(true_next).detach().numpy().flatten()
+    if model_type == 'HiroLRAN': # the true state needs to be decoded and encoded
+        true_next = linear_model.decoder(torch.tensor(z_next, dtype=torch.float32))
+        true_latent = linear_model.encoder(true_next).detach().numpy()
+        true_latent_traj.append(true_latent)
 
-    #true_traj.append(true_next.detach().numpy().flatten())
-    true_latent_traj.append(true_latent)
+        # expand true_latent to include integral terms
+        true_latent = np.concatenate([true_latent, x_next[nz:]])
 
-    # expand true_latent
-    true_latent = np.concatenate([true_latent, x_next[nz:]])
-    #true_latent = x_next #REMOVE THIS
-    # the proper next initial condition is encode(decode(x_next))
+    elif model_type == 'IanRNN': 
+        # save these just for testing LRAN MPC
+        x_aug_testing = linear_model.encoder(sim_state[0, nwarmup + i - 1, state_indices]).detach().numpy()
+        x_aug_testing = np.concatenate([x_aug_testing, np.zeros(nx_orig)])
+        linear_x_next = A_aug @ x_aug_testing + B_aug @ ctrl0
+        decode_encode_linear_x_next = linear_model.encoder(linear_model.decoder(torch.tensor(linear_x_next[:nz], dtype=torch.float32))).detach().numpy()
+
+        true_latent = x_next
+        true_latent_traj.append(true_latent[:nz])  # only save the latent part
+    
+    for ba in blocked_actuators:
+        val = wanted_sample[start_idx+nwarmup+i, future_ctrl_idxs[controller_actuators.index(ba)]].item()
+        idx = controller_actuators.index(ba)
+        umin[idx] = val
+        umax[idx] = val
+
+    # Inequality constraints:
+    lineq = np.hstack([np.kron(np.ones(N+1), lineq_x),
+                    np.kron(np.ones(N), umin)])
+    uineq = np.hstack([np.kron(np.ones(N+1), uineq_x),
+                    np.kron(np.ones(N), umax)])
+
+    # Stack equality and inequality constraints:
+    l_ = np.hstack([leq, lineq])
+    u_ = np.hstack([ueq, uineq])
+
     # Update the initial condition in the equality constraints:
     l_[:nx_aug] = -true_latent
     u_[:nx_aug] = -true_latent
@@ -345,8 +381,8 @@ true_traj = linear_model.decoder(torch.tensor(np.array(true_latent_traj), dtype=
 true_latent_traj = np.array(true_latent_traj)
 
 output_dict = {
-    'controlled_latent_traj': controlled_latent_traj,  # controlled latent trajectory (what the MPC intended)
-    'controlled_traj': controlled_traj,                # controlled trajectory
+    'controlled_latent_traj': controlled_latent_traj,  # controlled latent trajectory (what the MPC intended, only relevat for linear to linear control)
+    'controlled_traj': controlled_traj,                # controlled trajectory (only relevant for linear to linear control)
     'target_latent_traj': target_latent_traj,            # target latent trajectory
     'target_traj': target_traj,                # target trajectory
     'true_traj': true_traj,                    # true_trajectory (what the MPC actually did)
@@ -355,7 +391,8 @@ output_dict = {
     'objective_vals': objective_vals           # OSQP objective history
 }
 
-save_path = 'control_pickles/control_results.pkl'
+save_path = f'control_pickles/{true_model_name}{control_model_name}{shot_index}_{version}.pkl'
+print(f'Dumping results to {save_path}')
 with open(save_path, 'wb') as f:
     pickle.dump(output_dict, f)
 
