@@ -3,7 +3,7 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from customDatasetMakers import preprocess_data, ian_dataset, get_state_indices_dic
 from customModels import IanRNN, IanMLP, HiroLRAN, HiroLRAN_nondiag, HiroLRANDiag, HiroLRANInverse
 from train_helpers import make_bucket, \
-    get_state_mask, get_sample_time_state_mask, masked_loss, get_controllability
+    get_state_mask, get_sample_time_state_mask, masked_loss, get_controllability, get_controllability_and_condition_number
 
 from dataSettings import nx
 
@@ -39,6 +39,8 @@ pcs_normalize=config['optimization'].getboolean('pcs_normalize',False)
 fast_training=config['optimization'].getboolean('fast_training',False)
 inverting_weight=config['optimization'].getfloat('inverting_weight')
 future_inverting_weight=config['optimization'].getfloat('future_inverting_weight')
+include_latent_invertibility=config['optimization'].getboolean('include_latent_invertibility',False)
+include_condition_number=config['optimization'].getboolean('include_condition_number',False)
 latent_loss_weight=config['optimization'].getfloat('latent_loss_weight')
 controllability_weight=config['optimization'].getfloat('controllability_weight')
 profiles=config['inputs']['profiles'].split()
@@ -235,10 +237,21 @@ for epoch in range(start_epoch, n_epochs):
         if (model_type=='HiroLRAN' or model_type=='HiroLRAN_nondiag' and future_inverting_weight!=0):
             if padded_x.shape[-2]>20:
                 future_inverting_loss_list=[]
-                for i in range(1, 11): # make sure we're invertible for all 10 timesteps
-                    padded_x_10_linear = model.new_get_linear_x_n(padded_x, i) # CHECK THIS
-                    padded_x_10_nonlinear = model.new_get_nonlinear_x_n(padded_x, i) # CHECK THIS
-                    future_inverting_loss_list.append(masked_loss(loss_fn, padded_x_10_linear[:,:,:state_length], padded_x_10_nonlinear[:,:,:state_length], mask[:,:-i, :]))
+                if include_latent_invertibility:
+                    for i in range(1, 11):
+                        padded_x_10_linear = model.new_get_linear_x_n(padded_x, i)
+                        padded_x_10_nonlinear = model.new_get_nonlinear_x_n(padded_x, i)
+                        profiles_loss = masked_loss(loss_fn, padded_x_10_linear[:,:,:state_length], padded_x_10_nonlinear[:,:,:state_length], mask[:,:-i, :])
+
+
+                        latent_loss = masked_loss(loss_fn, padded_x_10_linear[:,:,state_length:], padded_x_10_nonlinear[:,:,state_length:], mask[:,:-i, :])
+                        
+                        future_inverting_loss_list.append(profiles_loss + latent_loss)
+                else:
+                    for i in range(1, 11): # make sure we're invertible for all 10 timesteps
+                        padded_x_10_linear = model.new_get_linear_x_n(padded_x, i)
+                        padded_x_10_nonlinear = model.new_get_nonlinear_x_n(padded_x, i)
+                        future_inverting_loss_list.append(masked_loss(loss_fn, padded_x_10_linear[:,:,:state_length], padded_x_10_nonlinear[:,:,:state_length], mask[:,:-i, :]))
                 future_inverting_loss = sum(future_inverting_loss_list) / len(future_inverting_loss_list)
                 train_loss += future_inverting_weight * future_inverting_loss
                 future_inverting_losses.append((future_inverting_weight*future_inverting_loss).item())
@@ -248,7 +261,11 @@ for epoch in range(start_epoch, n_epochs):
             train_loss += latent_loss_weight * latent_loss
 
         if controllability_weight!=0:
-            controllability_loss = controllability_weight / get_controllability(model_type, model)
+            if include_condition_number:
+                controllability, condition_number = get_controllability_and_condition_number(model_type, model)
+                controllability_loss = controllability_weight / controllability + controllability_weight * condition_number
+            else:
+                controllability_loss = controllability_weight / get_controllability(model_type, model)
             
             train_loss += controllability_loss # we want to maximize controllability, so we minimize the inverse
             controllability_losses.append(controllability_loss.item())
@@ -295,7 +312,7 @@ for epoch in range(start_epoch, n_epochs):
     print(f'{epoch+1:4d}/{n_epochs}({(time.time()-prev_time):0.2f}s)... train: {avg_train_losses[-1]:0.2e}, val: {avg_val_losses[-1]:0.2e};')
     print(f'Modelling loss: {(avg_train_losses[-1] - avg_controllability_losses[-1] - avg_inverting_losses[-1] - avg_future_inverting_losses[-1]):0.2e}')
     if controllability_weight!=0:
-        print(f'Controllability loss: {avg_controllability_losses[-1]:0.2e} or {(avg_controllability_losses[-1]/controllability_weight):0.2e}')
+        print(f'Controllability loss: {avg_controllability_losses[-1]:0.2e} or actual controllability {(1/(controllability_weight*avg_controllability_losses[-1])):0.2e}')
     if inverting_weight!=0:
         print(f'Inverting loss: {avg_inverting_losses[-1]:0.2e} or {avg_inverting_losses[-1]/inverting_weight:0.2e}')
     if future_inverting_weight!=0:
