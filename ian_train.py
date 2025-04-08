@@ -52,6 +52,8 @@ save_epochs=[int(elem) for elem in save_epochs]
 autoregression_num_steps=config['optimization'].getfloat('autoregression_num_steps',1)
 autoregression_start_epoch=config['optimization'].getint('autoregression_start_epoch',int(n_epochs/4))
 autoregression_end_epoch=config['optimization'].getint('autoregression_end_epoch',int(3*n_epochs/4))
+if model_type == "HiroLRAN_nondiag":
+    latent_dim = config['HiroLRAN_nondiag'].getint('latent_dim')
 if autoregression_num_steps<1:
     autoregression_num_steps=1
 # temporary to maintain back-compatibility
@@ -99,7 +101,7 @@ if tune_model:
             for param in child.parameters():
                 param.requires_grad = False
 
-min_sample_length=max(2*nwarmup,20)
+min_sample_length=max(2*nwarmup,40)
 train_filename=preprocessed_data_filenamebase+'train.pkl'
 print(f'Organizing train data from {train_filename}')
 start_time=time.time()
@@ -238,17 +240,16 @@ for epoch in range(start_epoch, n_epochs):
             if padded_x.shape[-2]>20:
                 future_inverting_loss_list=[]
                 if include_latent_invertibility:
-                    for i in range(1, 11):
-                        padded_x_10_linear = model.new_get_linear_x_n(padded_x, i)
-                        padded_x_10_nonlinear = model.new_get_nonlinear_x_n(padded_x, i)
+                    for i in [2, 10]:
+                        padded_x_10_linear, padded_z_10_linear = model.get_linear_x_n_z_n(padded_x, i)
+                        padded_x_10_nonlinear, padded_z_10_nonlinear = model.get_nonlinear_x_n_z_n(padded_x, i)
                         profiles_loss = masked_loss(loss_fn, padded_x_10_linear[:,:,:state_length], padded_x_10_nonlinear[:,:,:state_length], mask[:,:-i, :])
-
-
-                        latent_loss = masked_loss(loss_fn, padded_x_10_linear[:,:,state_length:], padded_x_10_nonlinear[:,:,state_length:], mask[:,:-i, :])
-                        
-                        future_inverting_loss_list.append(profiles_loss + latent_loss)
+                        # no mask to match dimensions. Do I need a mask?
+                        latent_loss = masked_loss(loss_fn, padded_z_10_linear[:,:,:], padded_z_10_nonlinear[:,:,:], mask[:,:-i, :latent_dim])
+                        #latent_loss = loss_fn(padded_z_10_linear[:,:,:], padded_z_10_nonlinear[:,:,:])
+                        future_inverting_loss_list.append(profiles_loss + 0.01*latent_loss)
                 else:
-                    for i in range(1, 11): # make sure we're invertible for all 10 timesteps
+                    for i in [2, 10]: # make sure we're invertible for all 10 timesteps
                         padded_x_10_linear = model.new_get_linear_x_n(padded_x, i)
                         padded_x_10_nonlinear = model.new_get_nonlinear_x_n(padded_x, i)
                         future_inverting_loss_list.append(masked_loss(loss_fn, padded_x_10_linear[:,:,:state_length], padded_x_10_nonlinear[:,:,:state_length], mask[:,:-i, :]))

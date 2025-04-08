@@ -612,6 +612,27 @@ class HiroLRAN_nondiag(torch.nn.Module):
             z_n = self.A(z_n) + self.B(actuators_trajectory)
             z_n = self.encoder(self.decoder(z_n))
         return self.decoder(z_n)
+    def get_linear_x_n_z_n(self, padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            actuators_trajectory = padded_input[:,i:-timesteps+i,state_dim+actuator_length:]
+            z_n = self.A(z_n) + self.B(actuators_trajectory)
+        return self.decoder(z_n), z_n
+
+    def get_nonlinear_x_n_z_n(self,padded_input, timesteps):
+        state_dim = self.output_dim
+        actuator_length = (self.input_dim - state_dim) // 2
+        x_0 = padded_input[:,:-timesteps,:state_dim]
+        z_n = self.encoder(x_0)
+        for i in range(timesteps):
+            actuators_trajectory = padded_input[:,i:-timesteps+i,state_dim+actuator_length:]
+            z_n = self.A(z_n) + self.B(actuators_trajectory)
+            z_n = self.encoder(self.decoder(z_n))
+        return self.decoder(z_n), z_n
+
     
 import torch.nn as nn
 
