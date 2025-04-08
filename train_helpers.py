@@ -94,7 +94,44 @@ def get_controllability(model_type, model, eps=1e-6):
     # We want to maximize sigma_min => minimize 1 / sigma_min.
     controllability = sigma_min + eps
     return controllability
+def get_controllability_and_condition_number(model_type, model, eps=1e-6):
+    """
+    Compute a differentiable penalty that is large when the system
+    is poorly controllable (small sigma_min of the controllability matrix).
+    
+    model: your HiroLRAN / HiroLRANDiag or similar, assumed to have:
+           model.A.weight (d x d) and model.B.weight (d x m).
+    alpha: scalar weight from config (controllability_weight).
+    eps:   small offset to avoid division by zero.
+    """
+    # Extract A and B from the model. Make sure they require grad if we want them to be learned.
+    if model_type == 'HiroLRAN_nondiag':
+        A = model.A.weight     # shape (d, d)
+        B = model.B.weight     # shape (d, m)
+    elif model_type == 'HiroLRAN' or model_type == 'HiroLRANInverse':
+        A = torch.diag(model.A.diagonal)
+        B = model.B.weight
+    d = A.shape[0]
 
+    # Build controllability matrix: [B, A B, A^2 B, ..., A^(d-1) B]
+    # We'll do an up-to-(d-1) expansion for discrete-time controllability of dimension d.
+    blocks = []
+    A_power = torch.eye(d, device=A.device, dtype=A.dtype)
+    for _ in range(d):
+        blocks.append(A_power @ B)
+        A_power = A @ A_power
+    C = torch.cat(blocks, dim=1)  # shape (d, d*m)
+
+    # smallest singular value of C
+    # NOTE: for small d, full SVD is fine. For bigger d, consider alternatives (e.g. truncated SVD).
+    # Also note torch.svd is deprecated in newer PyTorch in favor of torch.linalg.svd
+    U, S, V = torch.linalg.svd(C, full_matrices=False)
+    sigma_min = S[-1]  # S is sorted in descending order
+
+    # We want to maximize sigma_min => minimize 1 / sigma_min.
+    controllability = sigma_min + eps
+    condition_number = S[0]/(S[-1]+eps)
+    return controllability, condition_number
 def get_controllability_A_B(A, B, eps=1e-6):
     """
     Compute a differentiable penalty that is large when the system is poorly
